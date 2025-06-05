@@ -1,0 +1,196 @@
+name: Build TwitchTransFreeNeo Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build_matrix:
+    strategy:
+      matrix:
+        env: [linux, windows, macos_M1, macos_Intel]
+        include:
+          - env: linux
+            os: ubuntu-latest
+            bin: twitchTransFreeNeo
+            archive: tar.gz
+          - env: windows
+            os: windows-latest
+            bin: twitchTransFreeNeo.exe
+            archive: zip
+          - env: macos_M1
+            os: macos-latest
+            bin: twitchTransFreeNeo.command
+            archive: tar.gz
+            arch: _arm64
+          - env: macos_Intel
+            os: macos-latest
+            bin: twitchTransFreeNeo.command
+            archive: tar.gz
+            arch: _x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Upgrade pip and install dependencies
+        run: python -m pip install --upgrade pip setuptools wheel
+
+      # Windowsの場合のみPyInstallerのブートローダーを再ビルド
+      - name: Clone PyInstaller and Rebuild Bootloader for Windows
+        if: matrix.env == 'windows'
+        run: |
+          git clone https://github.com/pyinstaller/pyinstaller
+          cd pyinstaller/bootloader
+          python ./waf distclean all
+          cd ..
+          pip install .
+
+      # LinuxとmacOSの場合にPyInstallerをインストール
+      - name: Install PyInstaller for Linux and MacOS
+        if: matrix.env != 'windows'
+        run: |
+          python -m pip install pyinstaller
+          if [[ "${{ matrix.env }}" == "macos_M1" ]]; then
+            arch="arm64"
+          elif [[ "${{ matrix.env }}" == "macos_Intel" ]]; then
+            arch="x86_64"
+          else
+            arch=""
+          fi
+          echo "arch=$arch" >> $GITHUB_ENV
+
+      - name: Install requirements
+        run: python -m pip install -r requirements.txt
+
+      - name: Download cacert.pem
+        run: |
+          curl -o cacert.pem https://curl.se/ca/cacert.pem
+          
+      - name: Create dist directory
+        run: mkdir -p dist
+
+      - name: Get Version (Unix)
+        id: get_version_unix
+        if: runner.os != 'Windows'
+        run: |
+          VERSION=$(grep "__version__" twitchTransFreeNeo/__init__.py | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version detected: $VERSION"
+
+      - name: Get Version (Windows)
+        id: get_version_windows
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $content = Get-Content -Path twitchTransFreeNeo/__init__.py
+          $versionLine = $content | Where-Object { $_ -match '__version__ = "(.+)"' }
+          $version = $matches[1]
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "Version detected: $version"
+
+      - name: Set Version Variable
+        id: get_version
+        run: |
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            echo "version=${{ steps.get_version_windows.outputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ steps.get_version_unix.outputs.version }}" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+      - name: Build
+        run: python build.py ${{ matrix.env }}
+
+      - name: Archive with zip (Windows)
+        if: ${{ matrix.archive == 'zip' }}
+        run: |
+          Copy-Item -Path config_sample.json -Destination dist/
+          Copy-Item -Path README.md -Destination dist/ -ErrorAction SilentlyContinue
+          powershell Compress-Archive -Path dist/* -DestinationPath twitchTransFreeNeo_${{ steps.get_version.outputs.version }}_${{ matrix.env }}.zip
+
+      - name: Archive with tar.gz (Unix)
+        if: ${{ matrix.archive == 'tar.gz' }}
+        run: |
+          ARCHIVE_NAME="twitchTransFreeNeo_${{ steps.get_version.outputs.version }}_${{ matrix.env }}"
+          mv dist "$ARCHIVE_NAME"
+          cp config_sample.json "$ARCHIVE_NAME/"
+          if [ -f README.md ]; then
+            cp README.md "$ARCHIVE_NAME/"
+          fi
+          tar -czvf "${ARCHIVE_NAME}.tar.gz" "$ARCHIVE_NAME"
+          echo "Created archive: ${ARCHIVE_NAME}.tar.gz"
+          ls -la
+
+      - name: Debug Archive Info (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Matrix env: ${{ matrix.env }}"
+          echo "Matrix arch: ${{ matrix.arch }}"
+          echo "Version: ${{ steps.get_version.outputs.version }}"
+          echo "Archive type: ${{ matrix.archive }}"
+          ls -la
+
+      - name: Debug Archive Info (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          echo "Matrix env: ${{ matrix.env }}"
+          echo "Matrix arch: ${{ matrix.arch }}"
+          echo "Version: ${{ steps.get_version.outputs.version }}"
+          echo "Archive type: ${{ matrix.archive }}"
+          Get-ChildItem -Force
+
+      - name: List Files Before Release (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Current directory contents:"
+          ls -la
+          echo "Files that should be uploaded:"
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            echo "twitchTransFreeNeo_${{ steps.get_version.outputs.version }}_${{ matrix.env }}.zip"
+          else
+            echo "twitchTransFreeNeo_${{ steps.get_version.outputs.version }}_${{ matrix.env }}.tar.gz"
+          fi
+
+      - name: List Files Before Release (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          echo "Current directory contents:"
+          Get-ChildItem -Force
+          echo "Files that should be uploaded:"
+          if ("${{ matrix.archive }}" -eq "zip") {
+            echo "twitchTransFreeNeo_${{ steps.get_version.outputs.version }}_${{ matrix.env }}.zip"
+          } else {
+            echo "twitchTransFreeNeo_${{ steps.get_version.outputs.version }}_${{ matrix.env }}.tar.gz"
+          }
+
+      - name: Update GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: false
+          files: "*.${{ matrix.archive }}"
+          fail_on_unmatched_files: false
+
+      - name: Remove dist directory (Unix)
+        if: runner.os != 'Windows'
+        run: rm -rf dist twitchTransFreeNeo_*
+
+      - name: Remove dist directory (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          if (Test-Path dist) {
+            Remove-Item -Recurse -Force dist
+          }
+          Get-ChildItem twitchTransFreeNeo_* | Remove-Item -Force
