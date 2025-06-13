@@ -178,12 +178,13 @@ twitchTransFreeNeo/
 
 ## 開発者情報
 
-- **開発者**: sayonari
-- **ベース**: twitchTransFreeNext by さぁたん (@saatan_pion) and さよなりω (@husband_sayonari_omega)
-- **バージョン**: 1.0.0
+- **開発者**: sayonari (@husband_sayonari_omega)
+- **ベース**: twitchTransFreeNext（CUI版）も私が開発したもので、それをGUI化したものです
+- **協力者**: さぁたん（私の妻）
+- **バージョン**: 0.1.1_Beta
 
 ## 謝辞
 
-- 元のtwitchTransFreeNextの開発者の皆様
 - TwitchIO、Google翻訳API、DeepL APIの開発者の皆様
 - テスト・フィードバックをいただいた皆様
+- 妻のさぁたんのサポートに感謝
