@@ -4,29 +4,66 @@
 import asyncio
 import re
 from typing import Dict, Any, Callable, Optional, List
-from twitchio.ext import commands
-from emoji import distinct_emoji_list
+
+# オプショナルな依存関係
+try:
+    from twitchio.ext import commands
+    TWITCHIO_AVAILABLE = True
+except ImportError:
+    TWITCHIO_AVAILABLE = False
+    print("警告: twitchioが利用できません。Twitch接続機能は無効になります。")
+
+try:
+    from emoji import distinct_emoji_list
+    EMOJI_AVAILABLE = True
+except ImportError:
+    EMOJI_AVAILABLE = False
+    def distinct_emoji_list(text):
+        return []
+
 try:
     from .translator import TranslationEngine, LanguageDetector
     from .database import TranslationDatabase
     from .tts import TTSEngine
 except ImportError:
-    from twitchTransFreeNeo.core.translator import TranslationEngine, LanguageDetector
-    from twitchTransFreeNeo.core.database import TranslationDatabase
-    from twitchTransFreeNeo.core.tts import TTSEngine
+    try:
+        from twitchTransFreeNeo.core.translator import TranslationEngine, LanguageDetector
+        from twitchTransFreeNeo.core.database import TranslationDatabase
+        from twitchTransFreeNeo.core.tts import TTSEngine
+    except ImportError:
+        # フォールバック用のダミークラス
+        class TranslationEngine:
+            def __init__(self, *args, **kwargs): pass
+            async def translate(self, *args, **kwargs): return ""
+        
+        class LanguageDetector:
+            def __init__(self, *args, **kwargs): pass
+            def detect(self, *args, **kwargs): return "unknown"
+        
+        class TranslationDatabase:
+            def __init__(self, *args, **kwargs): pass
+            async def save_translation(self, *args, **kwargs): return True
+            async def get_translation(self, *args, **kwargs): return None
+        
+        class TTSEngine:
+            def __init__(self, *args, **kwargs): pass
+            async def speak(self, *args, **kwargs): pass
 
 class ChatMessage:
     """チャットメッセージクラス"""
     
-    def __init__(self, username: str, content: str, timestamp: str, lang: str = "", translated: str = "", target_lang: str = "", cleaned_content: str = ""):
-        self.username = username
-        self.content = content  # 元のメッセージ（絵文字含む）
-        self.cleaned_content = cleaned_content or content  # 絵文字除去後のメッセージ
-        self.timestamp = timestamp
+    def __init__(self, user: str, text: str, timestamp, lang: str = "", translation: str = ""):
+        from datetime import datetime
+        self.user = user
+        self.text = text
+        self.timestamp = timestamp if hasattr(timestamp, 'strftime') else datetime.now()
         self.lang = lang
-        self.translated = translated
-        self.target_lang = target_lang
-        self.is_translated = bool(translated)
+        self.translation = translation
+        
+        # 追加の属性
+        self.is_translated = bool(translation)  # 翻訳済みかどうか
+        self.cleaned_content = text  # クリーンアップされたコンテンツ（デフォルトは元のテキスト）
+        self.target_lang = ""  # ターゲット言語
 
 class MessageProcessor:
     """メッセージ処理クラス"""
@@ -250,14 +287,16 @@ class TwitchChatBot(commands.Bot):
         
         # ChatMessageオブジェクト作成
         chat_message = ChatMessage(
-            username=username,
-            content=original_content,
+            user=username,
+            text=original_content,
             timestamp=timestamp,
             lang=detected_lang,
-            translated=translated_text,
-            target_lang=target_lang,
-            cleaned_content=cleaned_content
+            translation=translated_text
         )
+        
+        # cleaned_contentとtarget_langを設定
+        chat_message.cleaned_content = cleaned_content
+        chat_message.target_lang = target_lang
         
         # GUI更新用コールバック
         if self.message_callback:
@@ -272,14 +311,14 @@ class TwitchChatBot(commands.Bot):
     
     async def _post_translation(self, channel, chat_message: ChatMessage):
         """翻訳結果をチャットに投稿"""
-        if not chat_message.translated:
+        if not chat_message.translation:
             return
         
-        output_text = chat_message.translated
+        output_text = chat_message.translation
         
         # 名前表示
         if self.config.get("show_by_name", True):
-            output_text = f"{output_text} [by {chat_message.username}]"
+            output_text = f"{output_text} [by {chat_message.user}]"
         
         # 言語表示
         if self.config.get("show_by_lang", True):
@@ -292,15 +331,56 @@ class TwitchChatBot(commands.Bot):
     
     def _add_tts_messages(self, chat_message: ChatMessage):
         """TTS読み上げメッセージを追加"""
+        # TTSが無効の場合は何もしない
+        if not self.config.get("tts_enabled", False):
+            return
+        
+        # 言語制限チェック
+        read_only_langs = self.config.get("read_only_these_lang", [])
+        if read_only_langs and chat_message.lang not in read_only_langs:
+            return
+        
         # 入力TTS（絵文字除去済みのメッセージ）
         if self.config.get("tts_in", False) and chat_message.cleaned_content:
-            self.tts_engine.put(chat_message.cleaned_content, chat_message.lang)
+            tts_text = self._build_tts_text(chat_message, chat_message.cleaned_content, chat_message.lang, is_input=True)
+            if tts_text:
+                self.tts_engine.put(tts_text, chat_message.lang)
         
         # 出力TTS（翻訳されたメッセージ）
-        if self.config.get("tts_out", False) and chat_message.translated:
+        if self.config.get("tts_out", False) and chat_message.translation:
             # 翻訳後のテキストからも絵文字を除去
-            cleaned_translated = self._clean_text_for_tts(chat_message.translated)
-            self.tts_engine.put(cleaned_translated, chat_message.target_lang)
+            cleaned_translated = self._clean_text_for_tts(chat_message.translation)
+            tts_text = self._build_tts_text(chat_message, cleaned_translated, chat_message.target_lang, is_input=False)
+            if tts_text:
+                self.tts_engine.put(tts_text, chat_message.target_lang)
+    
+    def _build_tts_text(self, chat_message: ChatMessage, content: str, lang: str, is_input: bool = True) -> str:
+        """TTS用のテキストを構築"""
+        parts = []
+        
+        # ユーザー名を読み上げ（入力/翻訳で分ける）
+        if is_input:
+            # 入力言語の場合
+            if self.config.get("tts_read_username_input", self.config.get("tts_read_username", True)):
+                parts.append(chat_message.user)
+        else:
+            # 翻訳言語の場合
+            if self.config.get("tts_read_username_output", self.config.get("tts_read_username", True)):
+                parts.append(chat_message.user)
+        
+        # 言語情報を読み上げ
+        if self.config.get("tts_read_lang", False):
+            parts.append(f"[{lang}]")
+        
+        # 内容を読み上げ
+        if self.config.get("tts_read_content", True):
+            # 最大文字数チェック
+            max_length = self.config.get("tts_text_max_length", 30)
+            if max_length > 0 and len(content) > max_length:
+                content = content[:max_length] + self.config.get("tts_message_for_omitting", "以下略")
+            parts.append(content)
+        
+        return ", ".join(parts) if parts else ""
     
     def _clean_text_for_tts(self, text: str) -> str:
         """TTS用にテキストをクリーニング（絵文字除去など）"""

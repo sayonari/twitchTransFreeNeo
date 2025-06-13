@@ -50,6 +50,11 @@ class ConfigManager:
             "tts_enabled": False,
             "tts_in": True,
             "tts_out": True,
+            "tts_read_username": True,  # 互換性のため残す
+            "tts_read_username_input": True,
+            "tts_read_username_output": True,
+            "tts_read_content": True,
+            "tts_read_lang": False,
             "tts_kind": "gTTS",  # gTTS, CeVIO
             "cevio_cast": "さとうささら",
             "tts_text_max_length": 30,
@@ -57,8 +62,8 @@ class ConfigManager:
             "read_only_these_lang": [],
             
             # GUI設定
-            "window_width": 800,
-            "window_height": 600,
+            "window_width": 1200,
+            "window_height": 800,
             "theme": "light",  # light, dark
             "font_size": 12,
             

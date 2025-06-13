@@ -174,7 +174,8 @@ class TranslationDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
                     '''DELETE FROM translations 
-                       WHERE created_at < datetime('now', '-{} days')'''.format(keep_days)
+                       WHERE created_at < datetime('now', ? || ' days')''',
+                    (-keep_days,)
                 )
                 await db.commit()
                 return cursor.rowcount

@@ -2,9 +2,10 @@
 # -*- coding: utf-8 -*-
 
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
 import webbrowser
 from typing import Dict, Any, Callable
+
 
 class SettingsWindow:
     """設定画面クラス"""
@@ -20,7 +21,7 @@ class SettingsWindow:
         """設定ウィンドウを作成"""
         self.window = tk.Toplevel(self.parent)
         self.window.title("設定 - twitchTransFreeNeo")
-        self.window.geometry("600x700")
+        self.window.geometry("700x700")
         self.window.resizable(True, True)
         
         # モーダルにする
@@ -31,12 +32,35 @@ class SettingsWindow:
         notebook = ttk.Notebook(self.window)
         notebook.pack(fill='both', expand=True, padx=10, pady=10)
         
+        # ノートブックの参照を保持（イベントバインディング前に設定）
+        self.notebook = notebook
+        
         # 各タブを作成
         self._create_basic_tab(notebook)
         self._create_translation_tab(notebook)
         self._create_filter_tab(notebook)
         self._create_tts_tab(notebook)
         self._create_gui_tab(notebook)
+        
+        # タブ切り替え時の即座の更新を有効にする
+        notebook.bind('<<NotebookTabChanged>>', self._on_tab_changed)
+        
+        # 各タブを強制的に一度表示して初期化
+        for i in range(notebook.index('end')):
+            notebook.select(i)
+            self.window.update_idletasks()
+            # 現在のタブを更新
+            current_tab = notebook.nametowidget(notebook.select())
+            if current_tab:
+                current_tab.update()
+                # Canvas要素を探して更新
+                for child in current_tab.winfo_children():
+                    if isinstance(child, tk.Canvas):
+                        child.update_idletasks()
+                        child.configure(scrollregion=child.bbox("all"))
+        
+        notebook.select(0)  # 最初のタブに戻る
+        self.window.update_idletasks()
         
         # ボタンフレーム
         button_frame = tk.Frame(self.window)
@@ -46,14 +70,14 @@ class SettingsWindow:
         ttk.Button(button_frame, text="キャンセル", command=self.cancel).pack(side='right', padx=5)
         ttk.Button(button_frame, text="適用", command=self.apply).pack(side='right', padx=5)
         ttk.Button(button_frame, text="OK", command=self.ok).pack(side='right', padx=5)
-        ttk.Button(button_frame, text="デフォルトに戻す", command=self.reset_to_default).pack(side='left', padx=5)
     
     def _create_basic_tab(self, notebook):
         """基本設定タブ"""
         frame = ttk.Frame(notebook)
         notebook.add(frame, text="基本設定")
+        frame.update_idletasks()  # 即座に更新
         
-        # スクロール可能フレーム
+        # スクロール可能にする
         canvas = tk.Canvas(frame)
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
@@ -78,7 +102,375 @@ class SettingsWindow:
         ttk.Entry(scrollable_frame, textvariable=self.username_var, width=30).grid(row=2, column=1, sticky='ew', padx=5, pady=2)
         
         ttk.Label(scrollable_frame, text="OAuthトークン:").grid(row=3, column=0, sticky='w', padx=5, pady=2)
-        self.oauth_var = tk.StringVar(value=self.config.get("trans_oauth", ""))\n        oauth_entry = ttk.Entry(scrollable_frame, textvariable=self.oauth_var, width=30, show="*")\n        oauth_entry.grid(row=3, column=1, sticky='ew', padx=5, pady=2)\n        \n        # OAuthトークン取得ボタン\n        ttk.Button(scrollable_frame, text="OAuthトークン取得", \n                  command=lambda: webbrowser.open("https://twitchapps.com/tmi/")).grid(row=4, column=1, sticky='w', padx=5, pady=2)\n        \n        # 表示設定\n        ttk.Label(scrollable_frame, text="表示設定", font=('', 12, 'bold')).grid(row=5, column=0, columnspan=2, sticky='w', pady=(20, 10))\n        \n        ttk.Label(scrollable_frame, text="翻訳テキストの色:").grid(row=6, column=0, sticky='w', padx=5, pady=2)\n        self.color_var = tk.StringVar(value=self.config.get("trans_text_color", "GoldenRod"))\n        color_combo = ttk.Combobox(scrollable_frame, textvariable=self.color_var, width=27)\n        color_combo['values'] = ['Blue', 'Coral', 'DodgerBlue', 'SpringGreen', 'YellowGreen', 'Green', \n                                'OrangeRed', 'Red', 'GoldenRod', 'HotPink', 'CadetBlue', 'SeaGreen', \n                                'Chocolate', 'BlueViolet', 'Firebrick']\n        color_combo.grid(row=6, column=1, sticky='ew', padx=5, pady=2)\n        \n        self.show_name_var = tk.BooleanVar(value=self.config.get("show_by_name", True))\n        ttk.Checkbutton(scrollable_frame, text="ユーザー名を表示", variable=self.show_name_var).grid(row=7, column=0, columnspan=2, sticky='w', padx=5, pady=2)\n        \n        self.show_lang_var = tk.BooleanVar(value=self.config.get("show_by_lang", True))\n        ttk.Checkbutton(scrollable_frame, text="言語情報を表示", variable=self.show_lang_var).grid(row=8, column=0, columnspan=2, sticky='w', padx=5, pady=2)\n        \n        # その他\n        ttk.Label(scrollable_frame, text="その他", font=('', 12, 'bold')).grid(row=9, column=0, columnspan=2, sticky='w', pady=(20, 10))\n        \n        self.debug_var = tk.BooleanVar(value=self.config.get("debug", False))\n        ttk.Checkbutton(scrollable_frame, text="デバッグモード", variable=self.debug_var).grid(row=10, column=0, columnspan=2, sticky='w', padx=5, pady=2)\n        \n        self.auto_start_var = tk.BooleanVar(value=self.config.get("auto_start", False))\n        ttk.Checkbutton(scrollable_frame, text="起動時に自動接続", variable=self.auto_start_var).grid(row=11, column=0, columnspan=2, sticky='w', padx=5, pady=2)\n        \n        # Grid設定\n        scrollable_frame.grid_columnconfigure(1, weight=1)\n        \n        canvas.pack(side="left", fill="both", expand=True)\n        scrollbar.pack(side="right", fill="y")\n    \n    def _create_translation_tab(self, notebook):\n        """翻訳設定タブ"""\n        frame = ttk.Frame(notebook)\n        notebook.add(frame, text="翻訳設定")\n        \n        # 言語設定\n        ttk.Label(frame, text="言語設定", font=('', 12, 'bold')).grid(row=0, column=0, columnspan=2, sticky='w', pady=10)\n        \n        ttk.Label(frame, text="ホーム言語:").grid(row=1, column=0, sticky='w', padx=5, pady=2)\n        self.home_lang_var = tk.StringVar(value=self.config.get("lang_trans_to_home", "ja"))\n        home_lang_combo = ttk.Combobox(frame, textvariable=self.home_lang_var, width=27)\n        home_lang_combo['values'] = ['ja', 'en', 'ko', 'zh-CN', 'zh-TW', 'fr', 'de', 'es', 'pt', 'it']\n        home_lang_combo.grid(row=1, column=1, sticky='ew', padx=5, pady=2)\n        \n        ttk.Label(frame, text="外国語:").grid(row=2, column=0, sticky='w', padx=5, pady=2)\n        self.other_lang_var = tk.StringVar(value=self.config.get("lang_home_to_other", "en"))\n        other_lang_combo = ttk.Combobox(frame, textvariable=self.other_lang_var, width=27)\n        other_lang_combo['values'] = ['en', 'ja', 'ko', 'zh-CN', 'zh-TW', 'fr', 'de', 'es', 'pt', 'it']\n        other_lang_combo.grid(row=2, column=1, sticky='ew', padx=5, pady=2)\n        \n        # 翻訳エンジン設定\n        ttk.Label(frame, text="翻訳エンジン設定", font=('', 12, 'bold')).grid(row=3, column=0, columnspan=2, sticky='w', pady=(20, 10))\n        \n        ttk.Label(frame, text="翻訳エンジン:").grid(row=4, column=0, sticky='w', padx=5, pady=2)\n        self.translator_var = tk.StringVar(value=self.config.get("translator", "google"))\n        translator_combo = ttk.Combobox(frame, textvariable=self.translator_var, width=27)\n        translator_combo['values'] = ['google', 'deepl']\n        translator_combo.grid(row=4, column=1, sticky='ew', padx=5, pady=2)\n        \n        ttk.Label(frame, text="Google翻訳サーバー:").grid(row=5, column=0, sticky='w', padx=5, pady=2)\n        self.google_suffix_var = tk.StringVar(value=self.config.get("google_translate_suffix", "co.jp"))\n        suffix_combo = ttk.Combobox(frame, textvariable=self.google_suffix_var, width=27)\n        suffix_combo['values'] = ['co.jp', 'com', 'co.uk', 'fr', 'de']\n        suffix_combo.grid(row=5, column=1, sticky='ew', padx=5, pady=2)\n        \n        ttk.Label(frame, text="GAS URL (オプション):").grid(row=6, column=0, sticky='w', padx=5, pady=2)\n        self.gas_url_var = tk.StringVar(value=self.config.get("gas_url", ""))\n        ttk.Entry(frame, textvariable=self.gas_url_var, width=30).grid(row=6, column=1, sticky='ew', padx=5, pady=2)\n        \n        ttk.Label(frame, text="DeepL APIキー (オプション):").grid(row=7, column=0, sticky='w', padx=5, pady=2)\n        self.deepl_key_var = tk.StringVar(value=self.config.get("deepl_api_key", ""))\n        deepl_entry = ttk.Entry(frame, textvariable=self.deepl_key_var, width=30, show="*")\n        deepl_entry.grid(row=7, column=1, sticky='ew', padx=5, pady=2)\n        \n        frame.grid_columnconfigure(1, weight=1)\n    \n    def _create_filter_tab(self, notebook):\n        """フィルター設定タブ"""\n        frame = ttk.Frame(notebook)\n        notebook.add(frame, text="フィルター設定")\n        \n        # 無視する言語\n        ttk.Label(frame, text="無視する言語 (カンマ区切り):", font=('', 10, 'bold')).grid(row=0, column=0, sticky='w', pady=5)\n        self.ignore_lang_var = tk.StringVar(value=','.join(self.config.get("ignore_lang", [])))\n        ttk.Entry(frame, textvariable=self.ignore_lang_var, width=50).grid(row=1, column=0, sticky='ew', padx=5, pady=2)\n        \n        # 無視するユーザー\n        ttk.Label(frame, text="無視するユーザー (カンマ区切り):", font=('', 10, 'bold')).grid(row=2, column=0, sticky='w', pady=(10, 5))\n        self.ignore_users_var = tk.StringVar(value=','.join(self.config.get("ignore_users", [])))\n        ttk.Entry(frame, textvariable=self.ignore_users_var, width=50).grid(row=3, column=0, sticky='ew', padx=5, pady=2)\n        \n        # 無視するテキスト\n        ttk.Label(frame, text="無視するテキスト (カンマ区切り):", font=('', 10, 'bold')).grid(row=4, column=0, sticky='w', pady=(10, 5))\n        self.ignore_line_var = tk.StringVar(value=','.join(self.config.get("ignore_line", [])))\n        ignore_text = tk.Text(frame, height=3, width=50)\n        ignore_text.grid(row=5, column=0, sticky='ew', padx=5, pady=2)\n        ignore_text.insert('1.0', ','.join(self.config.get("ignore_line", [])))\n        self.ignore_line_text = ignore_text\n        \n        # 削除する単語\n        ttk.Label(frame, text="削除する単語 (カンマ区切り):", font=('', 10, 'bold')).grid(row=6, column=0, sticky='w', pady=(10, 5))\n        self.delete_words_var = tk.StringVar(value=','.join(self.config.get("delete_words", [])))\n        delete_text = tk.Text(frame, height=3, width=50)\n        delete_text.grid(row=7, column=0, sticky='ew', padx=5, pady=2)\n        delete_text.insert('1.0', ','.join(self.config.get("delete_words", [])))\n        self.delete_words_text = delete_text\n        \n        frame.grid_columnconfigure(0, weight=1)\n    \n    def _create_tts_tab(self, notebook):\n        """TTS設定タブ"""\n        frame = ttk.Frame(notebook)\n        notebook.add(frame, text="TTS設定")\n        \n        # TTS基本設定\n        ttk.Label(frame, text="TTS基本設定", font=('', 12, 'bold')).grid(row=0, column=0, columnspan=2, sticky='w', pady=10)\n        \n        self.tts_in_var = tk.BooleanVar(value=self.config.get("tts_in", True))\n        ttk.Checkbutton(frame, text="入力テキストを読み上げ", variable=self.tts_in_var).grid(row=1, column=0, columnspan=2, sticky='w', padx=5, pady=2)\n        \n        self.tts_out_var = tk.BooleanVar(value=self.config.get("tts_out", True))\n        ttk.Checkbutton(frame, text="翻訳テキストを読み上げ", variable=self.tts_out_var).grid(row=2, column=0, columnspan=2, sticky='w', padx=5, pady=2)\n        \n        ttk.Label(frame, text="TTS種類:").grid(row=3, column=0, sticky='w', padx=5, pady=2)\n        self.tts_kind_var = tk.StringVar(value=self.config.get("tts_kind", "gTTS"))\n        tts_combo = ttk.Combobox(frame, textvariable=self.tts_kind_var, width=27)\n        tts_combo['values'] = ['gTTS', 'CeVIO']\n        tts_combo.grid(row=3, column=1, sticky='ew', padx=5, pady=2)\n        \n        ttk.Label(frame, text="CeVIOキャスト名:").grid(row=4, column=0, sticky='w', padx=5, pady=2)\n        self.cevio_cast_var = tk.StringVar(value=self.config.get("cevio_cast", "さとうささら"))\n        ttk.Entry(frame, textvariable=self.cevio_cast_var, width=30).grid(row=4, column=1, sticky='ew', padx=5, pady=2)\n        \n        ttk.Label(frame, text="最大読み上げ文字数:").grid(row=5, column=0, sticky='w', padx=5, pady=2)\n        self.tts_max_length_var = tk.IntVar(value=self.config.get("tts_text_max_length", 30))\n        ttk.Spinbox(frame, from_=0, to=200, textvariable=self.tts_max_length_var, width=28).grid(row=5, column=1, sticky='ew', padx=5, pady=2)\n        \n        ttk.Label(frame, text="省略時のメッセージ:").grid(row=6, column=0, sticky='w', padx=5, pady=2)\n        self.tts_omit_var = tk.StringVar(value=self.config.get("tts_message_for_omitting", "以下略"))\n        ttk.Entry(frame, textvariable=self.tts_omit_var, width=30).grid(row=6, column=1, sticky='ew', padx=5, pady=2)\n        \n        # 読み上げ言語制限\n        ttk.Label(frame, text="読み上げ言語制限 (カンマ区切り、空白で全言語):", font=('', 10, 'bold')).grid(row=7, column=0, columnspan=2, sticky='w', pady=(20, 5))\n        self.read_only_lang_var = tk.StringVar(value=','.join(self.config.get("read_only_these_lang", [])))\n        ttk.Entry(frame, textvariable=self.read_only_lang_var, width=50).grid(row=8, column=0, columnspan=2, sticky='ew', padx=5, pady=2)\n        \n        frame.grid_columnconfigure(1, weight=1)\n    \n    def _create_gui_tab(self, notebook):\n        """GUI設定タブ"""\n        frame = ttk.Frame(notebook)\n        notebook.add(frame, text="GUI設定")\n        \n        # 外観設定\n        ttk.Label(frame, text="外観設定", font=('', 12, 'bold')).grid(row=0, column=0, columnspan=2, sticky='w', pady=10)\n        \n        ttk.Label(frame, text="テーマ:").grid(row=1, column=0, sticky='w', padx=5, pady=2)\n        self.theme_var = tk.StringVar(value=self.config.get("theme", "light"))\n        theme_combo = ttk.Combobox(frame, textvariable=self.theme_var, width=27)\n        theme_combo['values'] = ['light', 'dark']\n        theme_combo.grid(row=1, column=1, sticky='ew', padx=5, pady=2)\n        \n        ttk.Label(frame, text="フォントサイズ:").grid(row=2, column=0, sticky='w', padx=5, pady=2)\n        self.font_size_var = tk.IntVar(value=self.config.get("font_size", 12))\n        ttk.Spinbox(frame, from_=8, to=24, textvariable=self.font_size_var, width=28).grid(row=2, column=1, sticky='ew', padx=5, pady=2)\n        \n        # ウィンドウサイズ\n        ttk.Label(frame, text="ウィンドウサイズ", font=('', 12, 'bold')).grid(row=3, column=0, columnspan=2, sticky='w', pady=(20, 10))\n        \n        ttk.Label(frame, text="幅:").grid(row=4, column=0, sticky='w', padx=5, pady=2)\n        self.window_width_var = tk.IntVar(value=self.config.get("window_width", 800))\n        ttk.Spinbox(frame, from_=600, to=1920, textvariable=self.window_width_var, width=28).grid(row=4, column=1, sticky='ew', padx=5, pady=2)\n        \n        ttk.Label(frame, text="高さ:").grid(row=5, column=0, sticky='w', padx=5, pady=2)\n        self.window_height_var = tk.IntVar(value=self.config.get("window_height", 600))\n        ttk.Spinbox(frame, from_=400, to=1080, textvariable=self.window_height_var, width=28).grid(row=5, column=1, sticky='ew', padx=5, pady=2)\n        \n        frame.grid_columnconfigure(1, weight=1)\n    \n    def _collect_config(self) -> Dict[str, Any]:\n        """GUI から設定を収集"""\n        new_config = {\n            "twitch_channel": self.channel_var.get().strip(),\n            "trans_username": self.username_var.get().strip(),\n            "trans_oauth": self.oauth_var.get().strip(),\n            "trans_text_color": self.color_var.get(),\n            "show_by_name": self.show_name_var.get(),\n            "show_by_lang": self.show_lang_var.get(),\n            "debug": self.debug_var.get(),\n            "auto_start": self.auto_start_var.get(),\n            \n            "lang_trans_to_home": self.home_lang_var.get(),\n            "lang_home_to_other": self.other_lang_var.get(),\n            "translator": self.translator_var.get(),\n            "google_translate_suffix": self.google_suffix_var.get(),\n            "gas_url": self.gas_url_var.get().strip(),\n            "deepl_api_key": self.deepl_key_var.get().strip(),\n            \n            "ignore_lang": [lang.strip() for lang in self.ignore_lang_var.get().split(',') if lang.strip()],\n            "ignore_users": [user.strip() for user in self.ignore_users_var.get().split(',') if user.strip()],\n            "ignore_line": [line.strip() for line in self.ignore_line_text.get('1.0', 'end-1c').split(',') if line.strip()],\n            "delete_words": [word.strip() for word in self.delete_words_text.get('1.0', 'end-1c').split(',') if word.strip()],\n            \n            "tts_in": self.tts_in_var.get(),\n            "tts_out": self.tts_out_var.get(),\n            "tts_kind": self.tts_kind_var.get(),\n            "cevio_cast": self.cevio_cast_var.get(),\n            "tts_text_max_length": self.tts_max_length_var.get(),\n            "tts_message_for_omitting": self.tts_omit_var.get(),\n            "read_only_these_lang": [lang.strip() for lang in self.read_only_lang_var.get().split(',') if lang.strip()],\n            \n            "theme": self.theme_var.get(),\n            "font_size": self.font_size_var.get(),\n            "window_width": self.window_width_var.get(),\n            "window_height": self.window_height_var.get()\n        }\n        \n        # 既存設定をマージ\n        result = self.config.copy()\n        result.update(new_config)\n        return result\n    \n    def _validate_config(self, config: Dict[str, Any]) -> tuple[bool, list[str]]:\n        """設定の妥当性をチェック"""\n        errors = []\n        \n        if not config.get("twitch_channel"):\n            errors.append("Twitchチャンネル名は必須です")\n        \n        if not config.get("trans_username"):\n            errors.append("翻訳bot用ユーザー名は必須です")\n        \n        if not config.get("trans_oauth"):\n            errors.append("OAuthトークンは必須です")\n        \n        if config.get("translator") not in ["google", "deepl"]:\n            errors.append("翻訳エンジンは 'google' または 'deepl' を選択してください")\n        \n        if config.get("tts_kind") not in ["gTTS", "CeVIO"]:\n            errors.append("TTS種類は 'gTTS' または 'CeVIO' を選択してください")\n        \n        return len(errors) == 0, errors\n    \n    def apply(self):\n        """設定を適用"""\n        new_config = self._collect_config()\n        is_valid, errors = self._validate_config(new_config)\n        \n        if not is_valid:\n            messagebox.showerror("設定エラー", "\\n".join(errors))\n            return\n        \n        self.config = new_config\n        self.on_config_change(new_config)\n        messagebox.showinfo("設定", "設定を適用しました")\n    \n    def ok(self):\n        """OK ボタン"""\n        self.apply()\n        self.window.destroy()\n    \n    def cancel(self):\n        """キャンセル"""\n        self.window.destroy()\n    \n    def reset_to_default(self):\n        """デフォルトに戻す"""\n        if messagebox.askyesno("確認", "設定をデフォルトに戻しますか？"):\n            # デフォルト設定で各変数を更新\n            try:
-                from ..utils.config_manager import ConfigManager
-            except ImportError:
-                from twitchTransFreeNeo.utils.config_manager import ConfigManager\n            default_config = ConfigManager()._load_default_config()\n            \n            # 基本設定\n            self.channel_var.set(default_config.get("twitch_channel", ""))\n            self.username_var.set(default_config.get("trans_username", ""))\n            self.oauth_var.set(default_config.get("trans_oauth", ""))\n            self.color_var.set(default_config.get("trans_text_color", "GoldenRod"))\n            self.show_name_var.set(default_config.get("show_by_name", True))\n            self.show_lang_var.set(default_config.get("show_by_lang", True))\n            self.debug_var.set(default_config.get("debug", False))\n            self.auto_start_var.set(default_config.get("auto_start", False))\n            \n            # 翻訳設定\n            self.home_lang_var.set(default_config.get("lang_trans_to_home", "ja"))\n            self.other_lang_var.set(default_config.get("lang_home_to_other", "en"))\n            self.translator_var.set(default_config.get("translator", "google"))\n            self.google_suffix_var.set(default_config.get("google_translate_suffix", "co.jp"))\n            self.gas_url_var.set(default_config.get("gas_url", ""))\n            self.deepl_key_var.set(default_config.get("deepl_api_key", ""))\n            \n            # フィルター設定\n            self.ignore_lang_var.set(','.join(default_config.get("ignore_lang", [])))\n            self.ignore_users_var.set(','.join(default_config.get("ignore_users", [])))\n            self.ignore_line_text.delete('1.0', 'end')\n            self.ignore_line_text.insert('1.0', ','.join(default_config.get("ignore_line", [])))\n            self.delete_words_text.delete('1.0', 'end')\n            self.delete_words_text.insert('1.0', ','.join(default_config.get("delete_words", [])))\n            \n            # TTS設定\n            self.tts_in_var.set(default_config.get("tts_in", True))\n            self.tts_out_var.set(default_config.get("tts_out", True))\n            self.tts_kind_var.set(default_config.get("tts_kind", "gTTS"))\n            self.cevio_cast_var.set(default_config.get("cevio_cast", "さとうささら"))\n            self.tts_max_length_var.set(default_config.get("tts_text_max_length", 30))\n            self.tts_omit_var.set(default_config.get("tts_message_for_omitting", "以下略"))\n            self.read_only_lang_var.set(','.join(default_config.get("read_only_these_lang", [])))\n            \n            # GUI設定\n            self.theme_var.set(default_config.get("theme", "light"))\n            self.font_size_var.set(default_config.get("font_size", 12))\n            self.window_width_var.set(default_config.get("window_width", 800))\n            self.window_height_var.set(default_config.get("window_height", 600))
+        self.oauth_var = tk.StringVar(value=self.config.get("trans_oauth", ""))
+        oauth_entry = ttk.Entry(scrollable_frame, textvariable=self.oauth_var, width=30, show="*")
+        oauth_entry.grid(row=3, column=1, sticky='ew', padx=5, pady=2)
+        
+        # OAuthトークン取得ボタン
+        ttk.Button(scrollable_frame, text="OAuthトークン取得", 
+                  command=lambda: webbrowser.open("https://twitchapps.com/tmi/")).grid(row=4, column=1, sticky='w', padx=5, pady=2)
+        
+        # 表示設定
+        ttk.Label(scrollable_frame, text="表示設定", font=('', 12, 'bold')).grid(row=5, column=0, columnspan=2, sticky='w', pady=(20, 10))
+        
+        ttk.Label(scrollable_frame, text="翻訳テキストの色:").grid(row=6, column=0, sticky='w', padx=5, pady=2)
+        self.color_var = tk.StringVar(value=self.config.get("trans_text_color", "GoldenRod"))
+        color_combo = ttk.Combobox(scrollable_frame, textvariable=self.color_var, width=27)
+        color_combo['values'] = ['Blue', 'Coral', 'DodgerBlue', 'SpringGreen', 'YellowGreen', 'Green', 
+                                'OrangeRed', 'Red', 'GoldenRod', 'HotPink', 'CadetBlue', 'SeaGreen', 
+                                'Chocolate', 'BlueViolet', 'Firebrick']
+        color_combo.grid(row=6, column=1, sticky='ew', padx=5, pady=2)
+        
+        self.show_name_var = tk.BooleanVar(value=self.config.get("show_by_name", True))
+        ttk.Checkbutton(scrollable_frame, text="ユーザー名を表示", variable=self.show_name_var).grid(row=7, column=0, columnspan=2, sticky='w', padx=5, pady=2)
+        
+        self.show_lang_var = tk.BooleanVar(value=self.config.get("show_by_lang", True))
+        ttk.Checkbutton(scrollable_frame, text="言語情報を表示", variable=self.show_lang_var).grid(row=8, column=0, columnspan=2, sticky='w', padx=5, pady=2)
+        
+        # その他
+        ttk.Label(scrollable_frame, text="その他", font=('', 12, 'bold')).grid(row=9, column=0, columnspan=2, sticky='w', pady=(20, 10))
+        
+        self.debug_var = tk.BooleanVar(value=self.config.get("debug", False))
+        ttk.Checkbutton(scrollable_frame, text="デバッグモード", variable=self.debug_var).grid(row=10, column=0, columnspan=2, sticky='w', padx=5, pady=2)
+        
+        self.auto_start_var = tk.BooleanVar(value=self.config.get("auto_start", False))
+        ttk.Checkbutton(scrollable_frame, text="起動時に自動接続", variable=self.auto_start_var).grid(row=11, column=0, columnspan=2, sticky='w', padx=5, pady=2)
+        
+        # Grid設定
+        scrollable_frame.grid_columnconfigure(1, weight=1)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Canvasの初期更新
+        frame.update_idletasks()
+        canvas.update_idletasks()
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    
+    def _create_translation_tab(self, notebook):
+        """翻訳設定タブ"""
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="翻訳設定")
+        frame.update_idletasks()  # 即座に更新
+        
+        # 言語設定
+        ttk.Label(frame, text="言語設定", font=('', 12, 'bold')).grid(row=0, column=0, columnspan=2, sticky='w', pady=10)
+        
+        ttk.Label(frame, text="ホーム言語:").grid(row=1, column=0, sticky='w', padx=5, pady=2)
+        self.home_lang_var = tk.StringVar(value=self.config.get("lang_trans_to_home", "ja"))
+        home_lang_combo = ttk.Combobox(frame, textvariable=self.home_lang_var, width=27)
+        home_lang_combo['values'] = ['ja', 'en', 'ko', 'zh-CN', 'zh-TW', 'fr', 'de', 'es', 'pt', 'it']
+        home_lang_combo.grid(row=1, column=1, sticky='ew', padx=5, pady=2)
+        
+        ttk.Label(frame, text="外国語:").grid(row=2, column=0, sticky='w', padx=5, pady=2)
+        self.other_lang_var = tk.StringVar(value=self.config.get("lang_home_to_other", "en"))
+        other_lang_combo = ttk.Combobox(frame, textvariable=self.other_lang_var, width=27)
+        other_lang_combo['values'] = ['en', 'ja', 'ko', 'zh-CN', 'zh-TW', 'fr', 'de', 'es', 'pt', 'it']
+        other_lang_combo.grid(row=2, column=1, sticky='ew', padx=5, pady=2)
+        
+        # 翻訳エンジン設定
+        ttk.Label(frame, text="翻訳エンジン設定", font=('', 12, 'bold')).grid(row=3, column=0, columnspan=2, sticky='w', pady=(20, 10))
+        
+        ttk.Label(frame, text="翻訳エンジン:").grid(row=4, column=0, sticky='w', padx=5, pady=2)
+        self.translator_var = tk.StringVar(value=self.config.get("translator", "google"))
+        translator_combo = ttk.Combobox(frame, textvariable=self.translator_var, width=27)
+        translator_combo['values'] = ['google', 'deepl']
+        translator_combo.grid(row=4, column=1, sticky='ew', padx=5, pady=2)
+        
+        ttk.Label(frame, text="Google翻訳サーバー:").grid(row=5, column=0, sticky='w', padx=5, pady=2)
+        self.google_suffix_var = tk.StringVar(value=self.config.get("google_translate_suffix", "co.jp"))
+        suffix_combo = ttk.Combobox(frame, textvariable=self.google_suffix_var, width=27)
+        suffix_combo['values'] = ['co.jp', 'com', 'co.uk', 'fr', 'de']
+        suffix_combo.grid(row=5, column=1, sticky='ew', padx=5, pady=2)
+        
+        ttk.Label(frame, text="DeepL APIキー (オプション):").grid(row=6, column=0, sticky='w', padx=5, pady=2)
+        self.deepl_key_var = tk.StringVar(value=self.config.get("deepl_api_key", ""))
+        deepl_entry = ttk.Entry(frame, textvariable=self.deepl_key_var, width=30, show="*")
+        deepl_entry.grid(row=6, column=1, sticky='ew', padx=5, pady=2)
+        
+        frame.grid_columnconfigure(1, weight=1)
+    
+    def _create_filter_tab(self, notebook):
+        """フィルタ設定タブ"""
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="フィルタ設定")
+        frame.update_idletasks()  # 即座に更新
+        
+        # 無視する言語
+        ttk.Label(frame, text="無視する言語 (カンマ区切り):", font=('', 10, 'bold')).grid(row=0, column=0, sticky='w', pady=5)
+        self.ignore_lang_var = tk.StringVar(value=','.join(self.config.get("ignore_lang", [])))
+        ttk.Entry(frame, textvariable=self.ignore_lang_var, width=50).grid(row=1, column=0, sticky='ew', padx=5, pady=2)
+        
+        # 無視するユーザー
+        ttk.Label(frame, text="無視するユーザー (カンマ区切り):", font=('', 10, 'bold')).grid(row=2, column=0, sticky='w', pady=(10, 5))
+        self.ignore_users_var = tk.StringVar(value=','.join(self.config.get("ignore_users", [])))
+        ttk.Entry(frame, textvariable=self.ignore_users_var, width=50).grid(row=3, column=0, sticky='ew', padx=5, pady=2)
+        
+        # 無視するテキスト
+        ttk.Label(frame, text="無視するテキスト (カンマ区切り):", font=('', 10, 'bold')).grid(row=4, column=0, sticky='w', pady=(10, 5))
+        ignore_text = tk.Text(frame, height=3, width=50)
+        ignore_text.grid(row=5, column=0, sticky='ew', padx=5, pady=2)
+        ignore_text.insert('1.0', ','.join(self.config.get("ignore_line", [])))
+        self.ignore_line_text = ignore_text
+        
+        # 削除する単語
+        ttk.Label(frame, text="削除する単語 (カンマ区切り):", font=('', 10, 'bold')).grid(row=6, column=0, sticky='w', pady=(10, 5))
+        delete_text = tk.Text(frame, height=3, width=50)
+        delete_text.grid(row=7, column=0, sticky='ew', padx=5, pady=2)
+        delete_text.insert('1.0', ','.join(self.config.get("delete_words", [])))
+        self.delete_words_text = delete_text
+        
+        frame.grid_columnconfigure(0, weight=1)
+    
+    def _create_tts_tab(self, notebook):
+        """TTS設定タブ"""
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="TTS設定")
+        frame.update_idletasks()  # 即座に更新
+        
+        # スクロール可能にする
+        canvas = tk.Canvas(frame)
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # TTS有効化
+        self.tts_enabled_var = tk.BooleanVar(value=self.config.get("tts_enabled", False))
+        ttk.Checkbutton(scrollable_frame, text="TTSを有効にする", variable=self.tts_enabled_var).pack(anchor='w', pady=10)
+        
+        # 2列レイアウトのためのフレーム
+        two_column_frame = ttk.Frame(scrollable_frame)
+        two_column_frame.pack(fill='both', expand=True, padx=10)
+        
+        # 左列: TTS設定
+        left_frame = ttk.LabelFrame(two_column_frame, text="TTS設定", padding=10)
+        left_frame.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
+        
+        self.tts_in_var = tk.BooleanVar(value=self.config.get("tts_in", False))
+        ttk.Checkbutton(left_frame, text="入力テキストを読み上げ", variable=self.tts_in_var).pack(anchor='w', pady=2)
+        
+        self.tts_out_var = tk.BooleanVar(value=self.config.get("tts_out", False))
+        ttk.Checkbutton(left_frame, text="翻訳テキストを読み上げ", variable=self.tts_out_var).pack(anchor='w', pady=2)
+        
+        # 右列: 読み上げ内容
+        right_frame = ttk.LabelFrame(two_column_frame, text="読み上げ内容", padding=10)
+        right_frame.grid(row=0, column=1, sticky='nsew', padx=5, pady=5)
+        
+        # 既存のtts_read_usernameとの互換性を保つ
+        old_username_setting = self.config.get("tts_read_username", True)
+        
+        self.tts_read_username_input_var = tk.BooleanVar(value=self.config.get("tts_read_username_input", old_username_setting))
+        ttk.Checkbutton(right_frame, text="ユーザー名（入力言語）を読み上げ", variable=self.tts_read_username_input_var).pack(anchor='w', pady=2)
+        
+        self.tts_read_username_output_var = tk.BooleanVar(value=self.config.get("tts_read_username_output", old_username_setting))
+        ttk.Checkbutton(right_frame, text="ユーザー名（翻訳言語）を読み上げ", variable=self.tts_read_username_output_var).pack(anchor='w', pady=2)
+        
+        self.tts_read_content_var = tk.BooleanVar(value=self.config.get("tts_read_content", True))
+        ttk.Checkbutton(right_frame, text="発言内容を読み上げ", variable=self.tts_read_content_var).pack(anchor='w', pady=2)
+        
+        self.tts_read_lang_var = tk.BooleanVar(value=self.config.get("tts_read_lang", False))
+        ttk.Checkbutton(right_frame, text="言語情報を読み上げ", variable=self.tts_read_lang_var).pack(anchor='w', pady=2)
+        
+        # 列の重みを設定
+        two_column_frame.grid_columnconfigure(0, weight=1)
+        two_column_frame.grid_columnconfigure(1, weight=1)
+        
+        # TTS詳細設定
+        detail_frame = ttk.LabelFrame(scrollable_frame, text="TTS詳細設定", padding=10)
+        detail_frame.pack(fill='x', padx=10, pady=(10, 5))
+        
+        # 詳細設定のグリッド
+        ttk.Label(detail_frame, text="TTS種類:").grid(row=0, column=0, sticky='w', padx=5, pady=2)
+        self.tts_kind_var = tk.StringVar(value=self.config.get("tts_kind", "gTTS"))
+        tts_combo = ttk.Combobox(detail_frame, textvariable=self.tts_kind_var, width=20)
+        tts_combo['values'] = ['gTTS', 'CeVIO']
+        tts_combo.grid(row=0, column=1, sticky='ew', padx=5, pady=2)
+        
+        ttk.Label(detail_frame, text="CeVIOキャスト名:").grid(row=1, column=0, sticky='w', padx=5, pady=2)
+        self.cevio_cast_var = tk.StringVar(value=self.config.get("cevio_cast", "さとうささら"))
+        ttk.Entry(detail_frame, textvariable=self.cevio_cast_var, width=30).grid(row=1, column=1, sticky='ew', padx=5, pady=2)
+        
+        ttk.Label(detail_frame, text="最大読み上げ文字数:").grid(row=2, column=0, sticky='w', padx=5, pady=2)
+        self.tts_max_length_var = tk.IntVar(value=self.config.get("tts_text_max_length", 30))
+        ttk.Spinbox(detail_frame, from_=0, to=200, textvariable=self.tts_max_length_var, width=30).grid(row=2, column=1, sticky='ew', padx=5, pady=2)
+        
+        ttk.Label(detail_frame, text="省略時のメッセージ:").grid(row=3, column=0, sticky='w', padx=5, pady=2)
+        self.tts_omit_var = tk.StringVar(value=self.config.get("tts_message_for_omitting", "以下略"))
+        ttk.Entry(detail_frame, textvariable=self.tts_omit_var, width=30).grid(row=3, column=1, sticky='ew', padx=5, pady=2)
+        
+        detail_frame.grid_columnconfigure(1, weight=1)
+        
+        # 読み上げ言語制限
+        lang_frame = ttk.LabelFrame(scrollable_frame, text="読み上げ言語制限", padding=10)
+        lang_frame.pack(fill='x', padx=10, pady=5)
+        
+        ttk.Label(lang_frame, text="カンマ区切りで言語コードを入力（空白で全言語）:").pack(anchor='w')
+        self.read_only_lang_var = tk.StringVar(value=','.join(self.config.get("read_only_these_lang", [])))
+        ttk.Entry(lang_frame, textvariable=self.read_only_lang_var, width=50).pack(fill='x', pady=5)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Canvasの初期更新
+        frame.update_idletasks()
+        canvas.update_idletasks()
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    
+    def _create_gui_tab(self, notebook):
+        """GUI設定タブ"""
+        frame = ttk.Frame(notebook)
+        notebook.add(frame, text="GUI設定")
+        frame.update_idletasks()  # 即座に更新
+        
+        # 外観設定
+        ttk.Label(frame, text="外観設定", font=('', 12, 'bold')).grid(row=0, column=0, columnspan=2, sticky='w', pady=10)
+        
+        ttk.Label(frame, text="テーマ:").grid(row=1, column=0, sticky='w', padx=5, pady=2)
+        self.theme_var = tk.StringVar(value=self.config.get("theme", "light"))
+        theme_combo = ttk.Combobox(frame, textvariable=self.theme_var, width=27)
+        theme_combo['values'] = ['light', 'dark']
+        theme_combo.grid(row=1, column=1, sticky='ew', padx=5, pady=2)
+        
+        ttk.Label(frame, text="フォントサイズ:").grid(row=2, column=0, sticky='w', padx=5, pady=2)
+        self.font_size_var = tk.IntVar(value=self.config.get("font_size", 12))
+        ttk.Spinbox(frame, from_=8, to=24, textvariable=self.font_size_var, width=28).grid(row=2, column=1, sticky='ew', padx=5, pady=2)
+        
+        # ウィンドウサイズ
+        ttk.Label(frame, text="ウィンドウサイズ", font=('', 12, 'bold')).grid(row=3, column=0, columnspan=2, sticky='w', pady=(20, 10))
+        
+        ttk.Label(frame, text="幅:").grid(row=4, column=0, sticky='w', padx=5, pady=2)
+        self.window_width_var = tk.IntVar(value=self.config.get("window_width", 1200))
+        ttk.Spinbox(frame, from_=800, to=1920, textvariable=self.window_width_var, width=28).grid(row=4, column=1, sticky='ew', padx=5, pady=2)
+        
+        ttk.Label(frame, text="高さ:").grid(row=5, column=0, sticky='w', padx=5, pady=2)
+        self.window_height_var = tk.IntVar(value=self.config.get("window_height", 800))
+        ttk.Spinbox(frame, from_=600, to=1080, textvariable=self.window_height_var, width=28).grid(row=5, column=1, sticky='ew', padx=5, pady=2)
+        
+        frame.grid_columnconfigure(1, weight=1)
+    
+    def _collect_config(self) -> Dict[str, Any]:
+        """GUI から設定を収集"""
+        new_config = {
+            "twitch_channel": self.channel_var.get().strip(),
+            "trans_username": self.username_var.get().strip(),
+            "trans_oauth": self.oauth_var.get().strip(),
+            "trans_text_color": self.color_var.get(),
+            "show_by_name": self.show_name_var.get(),
+            "show_by_lang": self.show_lang_var.get(),
+            "debug": self.debug_var.get(),
+            "auto_start": self.auto_start_var.get(),
+            
+            "lang_trans_to_home": self.home_lang_var.get(),
+            "lang_home_to_other": self.other_lang_var.get(),
+            "translator": self.translator_var.get(),
+            "google_translate_suffix": self.google_suffix_var.get(),
+            "deepl_api_key": self.deepl_key_var.get().strip(),
+            
+            "ignore_lang": [lang.strip() for lang in self.ignore_lang_var.get().split(',') if lang.strip()],
+            "ignore_users": [user.strip() for user in self.ignore_users_var.get().split(',') if user.strip()],
+            "ignore_line": [line.strip() for line in self.ignore_line_text.get('1.0', 'end-1c').split(',') if line.strip()],
+            "delete_words": [word.strip() for word in self.delete_words_text.get('1.0', 'end-1c').split(',') if word.strip()],
+            
+            "tts_enabled": self.tts_enabled_var.get(),
+            "tts_in": self.tts_in_var.get(),
+            "tts_out": self.tts_out_var.get(),
+            "tts_read_username_input": self.tts_read_username_input_var.get(),
+            "tts_read_username_output": self.tts_read_username_output_var.get(),
+            "tts_read_content": self.tts_read_content_var.get(),
+            "tts_read_lang": self.tts_read_lang_var.get(),
+            "tts_kind": self.tts_kind_var.get(),
+            "cevio_cast": self.cevio_cast_var.get(),
+            "tts_text_max_length": self.tts_max_length_var.get(),
+            "tts_message_for_omitting": self.tts_omit_var.get(),
+            "read_only_these_lang": [lang.strip() for lang in self.read_only_lang_var.get().split(',') if lang.strip()],
+            
+            "theme": self.theme_var.get(),
+            "font_size": self.font_size_var.get(),
+            "window_width": self.window_width_var.get(),
+            "window_height": self.window_height_var.get()
+        }
+        
+        # 既存設定をマージ
+        result = self.config.copy()
+        result.update(new_config)
+        return result
+    
+    def _validate_config(self, config: Dict[str, Any]) -> tuple:
+        """設定の妥当性をチェック"""
+        errors = []
+        
+        if not config.get("twitch_channel"):
+            errors.append("Twitchチャンネル名は必須です")
+        
+        if not config.get("trans_username"):
+            errors.append("翻訳bot用ユーザー名は必須です")
+        
+        if not config.get("trans_oauth"):
+            errors.append("OAuthトークンは必須です")
+        
+        if config.get("translator") not in ["google", "deepl"]:
+            errors.append("翻訳エンジンは 'google' または 'deepl' を選択してください")
+        
+        return len(errors) == 0, errors
+    
+    def apply(self):
+        """設定を適用"""
+        new_config = self._collect_config()
+        is_valid, errors = self._validate_config(new_config)
+        
+        if not is_valid:
+            messagebox.showerror("設定エラー", "\n".join(errors))
+            return
+        
+        self.config = new_config
+        self.on_config_change(new_config)
+        messagebox.showinfo("設定", "設定を適用しました")
+    
+    def ok(self):
+        """OK ボタン"""
+        self.apply()
+        self.window.destroy()
+    
+    def cancel(self):
+        """キャンセル"""
+        self.window.destroy()
+    
+    def _on_tab_changed(self, event):
+        """タブ変更時のコールバック"""
+        # notebookが設定されていない場合は何もしない
+        if not hasattr(self, 'notebook') or not self.notebook:
+            return
+        
+        # 現在のタブを取得
+        current_tab = event.widget.select()
+        
+        # 強制的に更新
+        self.window.update_idletasks()
+        
+        # タブ内のウィジェットを再描画
+        if current_tab:
+            try:
+                tab_widget = self.notebook.nametowidget(current_tab)
+                if tab_widget:
+                    tab_widget.update()
+                    # Canvasを含むタブの場合、Canvasも更新
+                    for child in tab_widget.winfo_children():
+                        if isinstance(child, tk.Canvas):
+                            child.update_idletasks()
+                            # スクロール領域を再計算
+                            child.configure(scrollregion=child.bbox("all"))
+                        child.update()
+            except tk.TclError:
+                # ウィジェットが存在しない場合のエラーを無視
+                pass
+
+
+# SimpleSettingsWindowのエイリアスを作成（互換性のため）
+SimpleSettingsWindow = SettingsWindow

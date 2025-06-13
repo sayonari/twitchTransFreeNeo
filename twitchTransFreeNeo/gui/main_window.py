@@ -9,14 +9,14 @@ from typing import Dict, Any, Optional
 try:
     from ..utils.config_manager import ConfigManager
     from ..core.chat_monitor import ChatMonitor, ChatMessage
-    from .simple_settings import SimpleSettingsWindow
-    from .simple_chat_display import SimpleChatDisplay, SimpleStatusBar
+    from .settings_window import SimpleSettingsWindow
+    from .chat_display import SimpleChatDisplay, SimpleStatusBar
 except ImportError:
     # フォールバック: 絶対インポート
     from twitchTransFreeNeo.utils.config_manager import ConfigManager
     from twitchTransFreeNeo.core.chat_monitor import ChatMonitor, ChatMessage
-    from twitchTransFreeNeo.gui.simple_settings import SimpleSettingsWindow
-    from twitchTransFreeNeo.gui.simple_chat_display import SimpleChatDisplay, SimpleStatusBar
+    from twitchTransFreeNeo.gui.settings_window import SimpleSettingsWindow
+    from twitchTransFreeNeo.gui.chat_display import SimpleChatDisplay, SimpleStatusBar
 
 class MainWindow:
     """メインウィンドウクラス"""
@@ -33,6 +33,7 @@ class MainWindow:
         self.loop_thread = None
         
         self._setup_window()
+        self._apply_theme()  # テーマを適用
         self._create_widgets()
         self._load_config()
         
@@ -42,18 +43,44 @@ class MainWindow:
     
     def _setup_window(self):
         """ウィンドウ設定"""
-        self.root.title("twitchTransFreeNeo v1.0.0")
+        try:
+            from .. import __version__
+        except:
+            __version__ = "Unknown"
+        self.root.title(f"twitchTransFreeNeo v{__version__}")
         
-        # ウィンドウサイズ設定
-        width = self.config_manager.get("window_width", 800)
-        height = self.config_manager.get("window_height", 600)
+        # ウィンドウサイズ設定（デフォルトを大きく）
+        width = self.config_manager.get("window_width", 1200)
+        height = self.config_manager.get("window_height", 800)
         self.root.geometry(f"{width}x{height}")
         
         # 最小サイズ設定
-        self.root.minsize(600, 400)
+        self.root.minsize(1000, 600)
         
         # 終了処理
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
+    
+    def _apply_theme(self):
+        """テーマを適用"""
+        import platform
+        theme = self.config_manager.get("theme", "light")
+        
+        if platform.system() == "Darwin":  # macOS
+            try:
+                # macOSでのアピアランスモード設定
+                from tkinter import ttk
+                if theme == "light":
+                    # ライトモードを強制
+                    self.root.tk.call("::tk::unsupported::MacWindowStyle", "style", self.root._w, "NSWindowStyleMaskTitled")
+                    # 背景色を明示的に白に設定
+                    self.root.configure(background='white')
+                    ttk.Style().configure(".", background='white', foreground='black')
+                else:
+                    # ダークモード
+                    self.root.configure(background='#2b2b2b')
+                    ttk.Style().configure(".", background='#2b2b2b', foreground='white')
+            except:
+                pass
     
     def _create_widgets(self):
         """ウィジェット作成"""
@@ -69,26 +96,72 @@ class MainWindow:
         content_frame.pack(fill='both', expand=True, padx=5, pady=5)
         
         # パネル分割
-        paned_window = ttk.PanedWindow(content_frame, orient='horizontal')
-        paned_window.pack(fill='both', expand=True)
+        self.paned_window = ttk.PanedWindow(content_frame, orient='horizontal')
+        self.paned_window.pack(fill='both', expand=True)
         
         # 左パネル（チャット表示）
-        left_frame = ttk.Frame(paned_window)
-        paned_window.add(left_frame, weight=3)
+        left_frame = ttk.Frame(self.paned_window)
+        self.paned_window.add(left_frame, weight=3)
         
         # チャット表示ウィジェット
         self.chat_display = SimpleChatDisplay(left_frame, self.config_manager.get_all())
         self.chat_display.pack(fill='both', expand=True)
         
         # 右パネル（情報パネル）
-        right_frame = ttk.Frame(paned_window)
-        paned_window.add(right_frame, weight=1)
+        right_frame = ttk.Frame(self.paned_window)
+        self.paned_window.add(right_frame, weight=1)
         
         self._create_simple_info_panel(right_frame)
         
         # ステータスバー
         self.status_bar = SimpleStatusBar(main_frame)
         self.status_bar.pack(fill='x', side='bottom')
+        
+        # ペイン幅の復元と保存設定
+        self.root.after(100, self._restore_pane_position)
+        # 複数のイベントにバインドして安定性を向上
+        self.paned_window.bind('<ButtonRelease-1>', self._save_pane_position)
+        self.paned_window.bind('<Button1-Motion>', self._on_pane_drag)
+        self.paned_window.bind('<B1-Motion>', self._on_pane_drag)
+    
+    def _create_simple_info_panel(self, parent):
+        """シンプルな情報パネル作成"""
+        # タイトル
+        title_label = ttk.Label(parent, text="情報", font=('', 12, 'bold'))
+        title_label.pack(pady=10)
+        
+        # 統計情報
+        stats_frame = ttk.LabelFrame(parent, text="統計")
+        stats_frame.pack(fill='x', padx=5, pady=5)
+        
+        self.total_messages_var = tk.StringVar(value="0")
+        self.translated_messages_var = tk.StringVar(value="0")
+        
+        ttk.Label(stats_frame, text="総メッセージ数:").pack(anchor='w', padx=5, pady=2)
+        ttk.Label(stats_frame, textvariable=self.total_messages_var).pack(anchor='w', padx=15, pady=2)
+        
+        ttk.Label(stats_frame, text="翻訳済み:").pack(anchor='w', padx=5, pady=2)
+        ttk.Label(stats_frame, textvariable=self.translated_messages_var).pack(anchor='w', padx=15, pady=2)
+        
+        # 接続情報
+        connection_frame = ttk.LabelFrame(parent, text="接続情報")
+        connection_frame.pack(fill='x', padx=5, pady=5)
+        
+        self.connection_status_var = tk.StringVar(value="未接続")
+        ttk.Label(connection_frame, text="状態:").pack(anchor='w', padx=5, pady=2)
+        self.connection_status_label = ttk.Label(connection_frame, textvariable=self.connection_status_var)
+        self.connection_status_label.pack(anchor='w', padx=15, pady=2)
+        
+        # ログエリア
+        log_frame = ttk.LabelFrame(parent, text="ログ")
+        log_frame.pack(fill='both', expand=True, padx=5, pady=5)
+        
+        self.log_text = tk.Text(log_frame, height=10, state=tk.DISABLED, wrap=tk.WORD)
+        log_scroll = ttk.Scrollbar(log_frame, orient='vertical', command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=log_scroll.set)
+        
+        self.log_text.pack(side='left', fill='both', expand=True)
+        log_scroll.pack(side='right', fill='y')
     
     def _create_toolbar(self, parent):
         """ツールバー作成"""
@@ -101,6 +174,9 @@ class MainWindow:
         
         # 設定ボタン
         ttk.Button(toolbar, text="設定", command=self._open_settings).pack(side='left', padx=2)
+        
+        # 診断ボタン
+        ttk.Button(toolbar, text="診断", command=self._open_diagnostics).pack(side='left', padx=2)
         
         # セパレータ
         ttk.Separator(toolbar, orient='vertical').pack(side='left', fill='y', padx=5)
@@ -389,19 +465,31 @@ class MainWindow:
         
         self.status_bar.set_message_stats(total, translated)
     
+    def _open_diagnostics(self):
+        """診断ウィンドウを開く"""
+        from ..utils.diagnostics import DiagnosticsWindow
+        DiagnosticsWindow(self.root, self.config_manager.get_all())
+    
     def _open_settings(self):
         """設定画面を開く"""
-        if self.settings_window is None or not self.settings_window.window.winfo_exists():
-            self.settings_window = SimpleSettingsWindow(
-                self.root, 
-                self.config_manager.get_all(), 
-                self._on_config_changed
-            )
+        try:
+            if hasattr(self, 'settings_window') and self.settings_window and self.settings_window.window.winfo_exists():
+                self.settings_window.window.lift()
+                return
+        except:
+            pass
+        
+        self.settings_window = SimpleSettingsWindow(
+            self.root, 
+            self.config_manager.get_all(), 
+            self._on_config_changed
+        )
     
     def _on_config_changed(self, new_config: Dict[str, Any]):
         """設定変更時のコールバック"""
         self.config_manager.update(new_config)
         self.config_manager.save_config()
+        self._apply_theme()  # テーマを再適用
         self._update_ui_from_config()
         
         # 接続中なら監視設定も更新
@@ -425,7 +513,7 @@ class MainWindow:
         """ログメッセージ追加"""
         from datetime import datetime
         timestamp = datetime.now().strftime("%H:%M:%S")
-        log_entry = f"[{timestamp}] {message}\\n"
+        log_entry = f"[{timestamp}] {message}\n"
         
         self.log_text.configure(state=tk.NORMAL)
         self.log_text.insert(tk.END, log_entry)
@@ -476,9 +564,55 @@ class MainWindow:
                 value = "有効" if value else "無効"
             self.config_tree.insert('', 'end', text=label, values=(str(value),))
     
+    def _restore_pane_position(self):
+        """ペイン位置を復元"""
+        try:
+            pane_position = self.config_manager.get("pane_position", None)
+            if pane_position is not None and pane_position > 200:  # 最小幅チェック
+                self.paned_window.sashpos(0, pane_position)
+            else:
+                # デフォルト位置を設定（ウィンドウ幅の75%）
+                self.root.update_idletasks()
+                width = self.paned_window.winfo_width()
+                if width > 1:
+                    default_pos = int(width * 0.75)
+                    self.paned_window.sashpos(0, default_pos)
+        except Exception as e:
+            print(f"ペイン位置復元エラー: {e}")
+    
+    def _on_pane_drag(self, event=None):
+        """ペインドラッグ中の処理"""
+        # ドラッグ中は頻繁に保存しない（パフォーマンス向上）
+        pass
+    
+    def _save_pane_position(self, event=None):
+        """ペイン位置を保存"""
+        try:
+            position = self.paned_window.sashpos(0)
+            if position > 200:  # 最小幅チェック
+                self.config_manager.set("pane_position", position)
+                # 遅延保存でパフォーマンス向上
+                if hasattr(self, '_save_timer'):
+                    self.root.after_cancel(self._save_timer)
+                self._save_timer = self.root.after(500, self._delayed_save)
+        except Exception as e:
+            print(f"ペイン位置保存エラー: {e}")
+    
+    def _delayed_save(self):
+        """遅延保存"""
+        try:
+            self.config_manager.save_config()
+        except:
+            pass
+    
     def _show_help(self):
         """ヘルプ表示"""
-        help_text = """twitchTransFreeNeo v1.0.0 ヘルプ
+        try:
+            from .. import __version__
+        except:
+            __version__ = "Unknown"
+        
+        help_text = f"""twitchTransFreeNeo v{__version__} ヘルプ
 
 【基本的な使い方】
 1. 「設定」ボタンから必要な設定を行ってください
