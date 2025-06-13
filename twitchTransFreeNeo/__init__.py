@@ -3,5 +3,5 @@ twitchTransFreeNeo - Next Generation Twitch Chat Translator
 GUI版Twitchチャット翻訳ツール
 """
 
-__version__ = "0.1.1_Beta"
+__version__ = "0.1.2_Beta"
 __author__ = "sayonari"

@@ -181,7 +181,7 @@ twitchTransFreeNeo/
 - **開発者**: sayonari (@husband_sayonari_omega)
 - **ベース**: twitchTransFreeNext（CUI版）も私が開発したもので、それをGUI化したものです
 - **協力者**: さぁたん（私の妻）
-- **バージョン**: 0.1.1_Beta
+- **バージョン**: 0.1.2_Beta
 
 ## 謝辞
 

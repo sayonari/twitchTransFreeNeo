@@ -1,5 +1,18 @@
 # 変更履歴
 
+## v0.1.2_Beta - 2025-01-13
+
+### 変更内容
+- プロジェクト構造の整理
+  - twitchTransFreeNextフォルダとその内容を削除（参照用のコピーだったため不要）
+  - 開発ドキュメントをdocs/フォルダに移動
+    - CLAUDE.md
+    - GITHUB_ACTIONS_SETUP_PLAN.md
+    - setup_instructions.md
+    - twitchTransFreeNext_詳細分析レポート.md
+  - tmpフォルダと古い音声ファイルを削除
+- ルートフォルダをクリーンアップして見通しを改善
+
 ## v0.1.1_Beta - 2025-01-13
 
 ### 変更内容
