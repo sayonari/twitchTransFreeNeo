@@ -41,9 +41,9 @@ def build_for_os(os_name, arch, add_data_option):
         "--hidden-import=twitchTransFreeNeo.gui",  # guiモジュールを強制包含
         "--hidden-import=twitchTransFreeNeo.core",  # coreモジュールを強制包含
         "--hidden-import=twitchTransFreeNeo.utils",  # utilsモジュールを強制包含
-        "--hidden-import=twitchTransFreeNeo.gui.simple_main_window",
-        "--hidden-import=twitchTransFreeNeo.gui.simple_settings",
-        "--hidden-import=twitchTransFreeNeo.gui.simple_chat_display",
+        "--hidden-import=twitchTransFreeNeo.gui.main_window",
+        "--hidden-import=twitchTransFreeNeo.gui.settings_window",
+        "--hidden-import=twitchTransFreeNeo.gui.chat_display",
         "--hidden-import=twitchTransFreeNeo.core.chat_monitor",
         "--hidden-import=twitchTransFreeNeo.core.translator",
         "--hidden-import=twitchTransFreeNeo.core.database",
