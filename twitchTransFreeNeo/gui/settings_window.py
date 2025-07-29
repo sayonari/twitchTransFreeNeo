@@ -136,6 +136,9 @@ class SettingsWindow:
         self.auto_start_var = tk.BooleanVar(value=self.config.get("auto_start", False))
         ttk.Checkbutton(scrollable_frame, text="起動時に自動接続", variable=self.auto_start_var).grid(row=11, column=0, columnspan=2, sticky='w', padx=5, pady=2)
         
+        self.view_only_mode_var = tk.BooleanVar(value=self.config.get("view_only_mode", False))
+        ttk.Checkbutton(scrollable_frame, text="表示のみモード（チャットに投稿しない）", variable=self.view_only_mode_var).grid(row=12, column=0, columnspan=2, sticky='w', padx=5, pady=2)
+        
         # Grid設定
         scrollable_frame.grid_columnconfigure(1, weight=1)
         
@@ -366,6 +369,7 @@ class SettingsWindow:
             "show_by_lang": self.show_lang_var.get(),
             "debug": self.debug_var.get(),
             "auto_start": self.auto_start_var.get(),
+            "view_only_mode": self.view_only_mode_var.get(),
             
             "lang_trans_to_home": self.home_lang_var.get(),
             "lang_home_to_other": self.other_lang_var.get(),
@@ -431,7 +435,7 @@ class SettingsWindow:
         
         self.config = new_config
         self.on_config_change(new_config)
-        messagebox.showinfo("設定", "設定を適用しました")
+        messagebox.showinfo("設定", "設定を適用しました。\n\nTwitchに接続中の場合は、新しい設定を反映するため自動的に再接続されます。")
     
     def ok(self):
         """OK ボタン"""

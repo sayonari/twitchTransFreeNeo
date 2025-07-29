@@ -49,11 +49,19 @@ class TranslationEngine:
                 
             if self.config.get("translator") == "deepl" and self.deepl_translator:
                 # DeepLの場合はGoogleで検出
-                detected = await self.google_translator.detect(text)
-                return detected[0] if detected else None
+                if hasattr(self.google_translator, 'detect'):
+                    detected = await self.google_translator.detect(text)
+                    return detected[0] if detected else None
+                else:
+                    print("言語検出エラー: Google翻訳エンジンにdetectメソッドがありません")
+                    return None
             else:
-                detected = await self.google_translator.detect(text)
-                return detected[0] if detected else None
+                if hasattr(self.google_translator, 'detect'):
+                    detected = await self.google_translator.detect(text)
+                    return detected[0] if detected else None
+                else:
+                    print("言語検出エラー: Google翻訳エンジンにdetectメソッドがありません")
+                    return None
         except Exception as e:
             print(f"言語検出エラー: {e}")
             return None

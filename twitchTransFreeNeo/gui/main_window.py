@@ -492,11 +492,22 @@ class MainWindow:
         self._apply_theme()  # テーマを再適用
         self._update_ui_from_config()
         
-        # 接続中なら監視設定も更新
+        # 接続中なら一度切断して再接続（新しい設定を反映させるため）
         if self.chat_monitor and self.is_connected:
-            self.chat_monitor.update_config(new_config)
-        
-        self._log_message("設定が更新されました")
+            self._log_message("設定変更のため、Twitchとの接続を再起動します...")
+            
+            # 現在の接続を停止
+            self._disconnect()
+            
+            # 少し待機（接続の確実な終了を待つ）
+            self.root.after(1000, self._restart_connection_with_new_config, new_config)
+        else:
+            self._log_message("設定が更新されました")
+    
+    def _restart_connection_with_new_config(self, new_config: Dict[str, Any]):
+        """新しい設定でTwitch接続を再開"""
+        self._log_message("新しい設定でTwitchに再接続します...")
+        self._connect()
     
     def _clear_chat(self):
         """チャットクリア"""
