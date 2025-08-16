@@ -176,20 +176,44 @@ class TTSEngine:
             # macOSでは最初からafplayを使用（playsoundは不安定）
             if is_macos:
                 try:
-                    if self.config.get("debug", False):
-                        print(f"TTS: Using afplay for macOS: {tts_file}")
-                    result = os.system(f"afplay '{tts_file}'")
-                    if self.config.get("debug", False):
-                        print(f"TTS: afplay completed with result: {result}")
-                    if result == 0:
-                        play_success = True
+                    # デバッグ情報を強化
+                    print(f"TTS: Using afplay for macOS")
+                    print(f"TTS: File path: {tts_file}")
+                    print(f"TTS: File exists: {os.path.exists(tts_file)}")
+                    if os.path.exists(tts_file):
+                        print(f"TTS: File size: {os.path.getsize(tts_file)} bytes")
+                        # 絶対パスを使用
+                        abs_path = os.path.abspath(tts_file)
+                        print(f"TTS: Absolute path: {abs_path}")
+                        
+                        # subprocessを使用してより詳細なエラー情報を取得
+                        import subprocess
+                        try:
+                            result = subprocess.run(['afplay', abs_path], 
+                                                  capture_output=True, 
+                                                  text=True, 
+                                                  timeout=10)
+                            if result.returncode == 0:
+                                play_success = True
+                                print("TTS: afplay completed successfully")
+                            else:
+                                print(f"TTS warning: afplay failed with code {result.returncode}")
+                                if result.stderr:
+                                    print(f"TTS stderr: {result.stderr}")
+                        except subprocess.TimeoutExpired:
+                            print("TTS error: afplay timeout")
+                        except FileNotFoundError:
+                            print("TTS error: afplay command not found")
+                            # フォールバック: os.systemを試す
+                            result = os.system(f"afplay '{abs_path}'")
+                            if result == 0:
+                                play_success = True
                     else:
-                        print(f"TTS warning: afplay returned non-zero exit code: {result}")
+                        print(f"TTS error: File does not exist: {tts_file}")
                 except Exception as afplay_error:
                     print(f'TTS afplay error: {afplay_error}')
-                    if self.config.get("debug", False):
-                        import traceback
-                        traceback.print_exc()
+                    import traceback
+                    traceback.print_exc()
             
             # Method 1: pygame (高い優先度、クロスプラットフォーム対応)
             if pygame_available and not play_success:

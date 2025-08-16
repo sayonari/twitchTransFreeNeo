@@ -398,13 +398,27 @@ class MainWindow:
         """接続切り替え"""
         # ボタンを一時的に無効化（連続クリック防止）
         self.connect_button.configure(state='disabled')
-        self.root.update_idletasks()
         
+        # 非同期で接続処理を実行（UIをブロックしない）
+        if self.is_connected:
+            # 切断処理を別スレッドで実行
+            self.root.after(10, self._disconnect_async)
+        else:
+            # 接続処理を別スレッドで実行
+            self.root.after(10, self._connect_async)
+    
+    def _connect_async(self):
+        """非同期接続処理のラッパー"""
         try:
-            if self.is_connected:
-                self._disconnect()
-            else:
-                self._connect()
+            self._connect()
+        finally:
+            # 1秒後にボタンを再有効化
+            self.root.after(1000, lambda: self.connect_button.configure(state='normal'))
+    
+    def _disconnect_async(self):
+        """非同期切断処理のラッパー"""
+        try:
+            self._disconnect()
         finally:
             # 1秒後にボタンを再有効化
             self.root.after(1000, lambda: self.connect_button.configure(state='normal'))
@@ -508,6 +522,9 @@ class MainWindow:
     
     def _open_settings(self):
         """設定画面を開く"""
+        # すぐにUIを更新してレスポンシブに
+        self.root.update_idletasks()
+        
         try:
             if hasattr(self, 'settings_window') and self.settings_window and self.settings_window.window.winfo_exists():
                 self.settings_window.window.lift()
@@ -515,6 +532,11 @@ class MainWindow:
         except:
             pass
         
+        # 設定ウィンドウを非同期で開く
+        self.root.after(10, self._create_settings_window)
+    
+    def _create_settings_window(self):
+        """設定ウィンドウを作成"""
         self.settings_window = SimpleSettingsWindow(
             self.root, 
             self.config_manager.get_all(), 
