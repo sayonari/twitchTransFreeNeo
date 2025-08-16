@@ -495,7 +495,8 @@ class MainWindow:
         if self.settings_window:
             try:
                 self.settings_window.window.lift()
-                self.settings_window.window.focus_force()
+                self.settings_window.window.attributes('-topmost', True)
+                self.settings_window.window.after(100, lambda: self.settings_window.window.attributes('-topmost', False))
                 return
             except:
                 self.settings_window = None
@@ -506,6 +507,13 @@ class MainWindow:
             self.config_manager.get_all(), 
             self._on_config_changed
         )
+        
+        # ウィンドウが閉じられたらNoneにする
+        def on_close():
+            self.settings_window = None
+        
+        if self.settings_window and self.settings_window.window:
+            self.settings_window.window.protocol("WM_DELETE_WINDOW", lambda: [self.settings_window.window.destroy(), on_close()])
     
     def _on_config_changed(self, new_config: Dict[str, Any]):
         """設定変更時のコールバック"""

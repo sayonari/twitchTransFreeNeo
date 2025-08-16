@@ -24,13 +24,13 @@ class SettingsWindow:
         self.window.geometry("700x700")
         self.window.resizable(True, True)
         
-        # ウィンドウを前面に
+        # ウィンドウを前面に（grab_setは使わない）
         self.window.lift()
-        self.window.focus_force()
+        self.window.attributes('-topmost', True)
+        self.window.after(100, lambda: self.window.attributes('-topmost', False))
         
-        # モーダルにする
+        # transientは設定するがgrab_setは使わない（macOSでの問題回避）
         self.window.transient(self.parent)
-        self.window.grab_set()
         
         # ノートブック（タブ）作成
         notebook = ttk.Notebook(self.window)
@@ -49,21 +49,8 @@ class SettingsWindow:
         # タブ切り替え時の即座の更新を有効にする
         notebook.bind('<<NotebookTabChanged>>', self._on_tab_changed)
         
-        # 各タブを強制的に一度表示して初期化
-        for i in range(notebook.index('end')):
-            notebook.select(i)
-            self.window.update_idletasks()
-            # 現在のタブを更新
-            current_tab = notebook.nametowidget(notebook.select())
-            if current_tab:
-                current_tab.update()
-                # Canvas要素を探して更新
-                for child in current_tab.winfo_children():
-                    if isinstance(child, tk.Canvas):
-                        child.update_idletasks()
-                        child.configure(scrollregion=child.bbox("all"))
-        
-        notebook.select(0)  # 最初のタブに戻る
+        # 初期化時はシンプルに
+        notebook.select(0)  # 最初のタブを選択
         self.window.update_idletasks()
         
         # ボタンフレーム
@@ -71,9 +58,19 @@ class SettingsWindow:
         button_frame.pack(fill='x', padx=10, pady=10)
         
         # ボタン（大きめに）
-        ttk.Button(button_frame, text="キャンセル", command=self.cancel, width=10).pack(side='right', padx=5, ipady=5)
-        ttk.Button(button_frame, text="適用", command=self.apply, width=10).pack(side='right', padx=5, ipady=5)
-        ttk.Button(button_frame, text="OK", command=self.ok, width=10).pack(side='right', padx=5, ipady=5)
+        cancel_btn = ttk.Button(button_frame, text="キャンセル", command=self.cancel, width=10)
+        cancel_btn.pack(side='right', padx=5, ipady=5)
+        
+        apply_btn = ttk.Button(button_frame, text="適用", command=self.apply, width=10)
+        apply_btn.pack(side='right', padx=5, ipady=5)
+        
+        ok_btn = ttk.Button(button_frame, text="OK", command=self.ok, width=10)
+        ok_btn.pack(side='right', padx=5, ipady=5)
+        
+        # ボタンのフォーカス問題対策
+        for btn in [cancel_btn, apply_btn, ok_btn]:
+            btn.bind('<Enter>', lambda e, b=btn: b.focus_set())
+            btn.bind('<Leave>', lambda e: self.window.focus_set())
     
     def _create_basic_tab(self, notebook):
         """基本設定タブ"""
