@@ -35,6 +35,7 @@ class MainWindow:
         
         self._setup_window()
         self._apply_theme()  # テーマを適用
+        self._initialized = True  # 初期化完了フラグ
         self._create_widgets()
         self._load_config()
         
@@ -83,29 +84,42 @@ class MainWindow:
     
     def _apply_theme(self):
         """フォントサイズとウィンドウサイズを適用"""
-        from tkinter import ttk, font
-        
-        font_size = self.config_manager.get("font_size", 12)
-        
-        # フォントの設定
-        default_font = font.nametofont("TkDefaultFont")
-        default_font.configure(size=font_size)
-        
-        text_font = font.nametofont("TkTextFont") 
-        text_font.configure(size=font_size)
-        
-        # スタイル設定
-        style = ttk.Style()
-        style.configure(".", font=('', font_size))
-        style.configure("TButton", font=('', font_size))
-        style.configure("TEntry", font=('', font_size))
-        style.configure("Treeview", font=('', font_size))
-        style.configure("Treeview.Heading", font=('', font_size, 'bold'))
-        
-        # ウィンドウサイズの更新
-        width = self.config_manager.get("window_width", 1200)
-        height = self.config_manager.get("window_height", 800)
-        self.root.geometry(f"{width}x{height}")
+        try:
+            from tkinter import ttk, font
+            
+            font_size = self.config_manager.get("font_size", 12)
+            
+            # フォントの設定
+            try:
+                default_font = font.nametofont("TkDefaultFont")
+                default_font.configure(size=font_size)
+            except:
+                pass
+            
+            try:
+                text_font = font.nametofont("TkTextFont") 
+                text_font.configure(size=font_size)
+            except:
+                pass
+            
+            # スタイル設定
+            try:
+                style = ttk.Style()
+                style.configure(".", font=('', font_size))
+                style.configure("TButton", font=('', font_size))
+                style.configure("TEntry", font=('', font_size))
+                style.configure("Treeview", font=('', font_size))
+                style.configure("Treeview.Heading", font=('', font_size, 'bold'))
+            except:
+                pass
+            
+            # ウィンドウサイズの更新（設定変更時はサイズ変更しない）
+            if not hasattr(self, '_initialized'):
+                width = self.config_manager.get("window_width", 1200)
+                height = self.config_manager.get("window_height", 800)
+                self.root.geometry(f"{width}x{height}")
+        except Exception as e:
+            print(f"フォント設定エラー: {e}")
     
     def _create_widgets(self):
         """ウィジェット作成"""
@@ -394,10 +408,21 @@ class MainWindow:
     
     def _toggle_connection(self):
         """接続切り替え"""
-        if self.is_connected:
-            self._disconnect()
-        else:
-            self._connect()
+        # 連続クリック防止
+        if hasattr(self, '_connection_in_progress'):
+            return
+        
+        self._connection_in_progress = True
+        try:
+            if self.is_connected:
+                self._disconnect()
+            else:
+                self._connect()
+        finally:
+            # 少し待ってからフラグをリセット
+            def reset_flag():
+                self._connection_in_progress = False
+            self.root.after(200, reset_flag)
     
     def _connect(self):
         """接続開始"""
@@ -493,8 +518,18 @@ class MainWindow:
     
     def _open_diagnostics(self):
         """診断ウィンドウを開く"""
-        from ..utils.diagnostics import DiagnosticsWindow
-        DiagnosticsWindow(self.root, self.config_manager.get_all())
+        # 連続クリック防止
+        if hasattr(self, '_diagnostics_opening'):
+            return
+        
+        self._diagnostics_opening = True
+        try:
+            from ..utils.diagnostics import DiagnosticsWindow
+            DiagnosticsWindow(self.root, self.config_manager.get_all())
+        finally:
+            def reset_flag():
+                self._diagnostics_opening = False
+            self.root.after(200, reset_flag)
     
     def _open_settings(self):
         """設定画面を開く"""
@@ -515,19 +550,28 @@ class MainWindow:
     
     def _on_config_changed(self, new_config: Dict[str, Any]):
         """設定変更時のコールバック"""
-        self.config_manager.update(new_config)
-        self.config_manager.save_config()
-        self._apply_theme()  # テーマを再適用
-        self._update_ui_from_config()
-        
-        # 接続中なら一度切断して再接続（新しい設定を反映させるため）
-        if self.chat_monitor and self.is_connected:
-            self._log_message("設定変更のため、Twitchとの接続を再起動します...")
-            self._disconnect()
-            # 少し待ってから再接続
-            threading.Timer(0.5, self._connect).start()
-        else:
-            self._log_message("設定が更新されました")
+        try:
+            self.config_manager.update(new_config)
+            self.config_manager.save_config()
+            self._apply_theme()  # テーマを再適用
+            self._update_ui_from_config()
+            
+            # 接続中なら一度切断して再接続（新しい設定を反映させるため）
+            if self.chat_monitor and self.is_connected:
+                self._log_message("設定変更のため、Twitchとの接続を再起動します...")
+                self._disconnect()
+                # 少し待ってから再接続
+                def reconnect():
+                    try:
+                        self._connect()
+                    except:
+                        pass
+                threading.Timer(0.5, reconnect).start()
+            else:
+                self._log_message("設定が更新されました")
+        except Exception as e:
+            print(f"設定変更エラー: {e}")
+            self._log_message(f"設定変更エラー: {e}")
     
     def _clear_chat(self):
         """チャットクリア"""
