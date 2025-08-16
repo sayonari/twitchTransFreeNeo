@@ -224,9 +224,15 @@ class SimpleChatDisplay(ttk.Frame):
     
     def update_config(self, config: Dict[str, Any]):
         """設定を更新"""
-        self.config = config
-        # 表示を更新
-        self._update_display()
+        try:
+            self.config = config
+            # 表示を更新（エラーを無視）
+            try:
+                self._update_display()
+            except Exception as e:
+                print(f"チャット表示更新エラー: {e}")
+        except Exception as e:
+            print(f"設定更新エラー: {e}")
     
     def update_font_size(self, font_size: int):
         """フォントサイズを更新"""

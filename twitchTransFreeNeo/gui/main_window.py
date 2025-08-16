@@ -368,34 +368,51 @@ class MainWindow:
     
     def _update_ui_from_config(self):
         """設定からUIを更新"""
-        config = self.config_manager.get_all()
-        
-        # チャンネル・botユーザー表示更新
-        channel = config.get("twitch_channel", "")
-        bot_user = config.get("trans_username", "")
-        
-        if channel:
-            self.channel_label.configure(text=channel, foreground="green")
-        else:
-            self.channel_label.configure(text="未設定", foreground="red")
-        
-        if bot_user:
-            self.bot_label.configure(text=bot_user, foreground="green")
-        else:
-            self.bot_label.configure(text="未設定", foreground="red")
-        
-        # チャット表示設定更新
-        self.chat_display.update_config(config)
-        
-        # フォントサイズ更新
-        font_size = config.get("font_size", 12)
-        self.status_bar.update_font_size(font_size)
-        
-        # 設定表示更新（簡易版では省略）
-        
-        # 翻訳エンジン状態更新
-        engine = config.get("translator", "google")
-        self.status_bar.set_translator_status(engine, "設定済み")
+        try:
+            config = self.config_manager.get_all()
+            
+            # チャンネル・botユーザー表示更新
+            channel = config.get("twitch_channel", "")
+            bot_user = config.get("trans_username", "")
+            
+            if hasattr(self, 'channel_label'):
+                if channel:
+                    self.channel_label.configure(text=channel, foreground="green")
+                else:
+                    self.channel_label.configure(text="未設定", foreground="red")
+            
+            if hasattr(self, 'bot_label'):
+                if bot_user:
+                    self.bot_label.configure(text=bot_user, foreground="green")
+                else:
+                    self.bot_label.configure(text="未設定", foreground="red")
+            
+            # チャット表示設定更新（エラーを無視）
+            if hasattr(self, 'chat_display'):
+                try:
+                    self.chat_display.update_config(config)
+                except Exception as e:
+                    print(f"チャット表示更新エラー（無視）: {e}")
+            
+            # フォントサイズ更新（エラーを無視）
+            if hasattr(self, 'status_bar'):
+                try:
+                    font_size = config.get("font_size", 12)
+                    self.status_bar.update_font_size(font_size)
+                except Exception as e:
+                    print(f"ステータスバー更新エラー（無視）: {e}")
+            
+            # 翻訳エンジン状態更新
+            if hasattr(self, 'status_bar'):
+                try:
+                    engine = config.get("translator", "google")
+                    self.status_bar.set_translator_status(engine, "設定済み")
+                except Exception as e:
+                    print(f"翻訳エンジン状態更新エラー（無視）: {e}")
+        except Exception as e:
+            print(f"UI更新全体エラー: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _auto_connect(self):
         """自動接続"""
@@ -551,10 +568,21 @@ class MainWindow:
     def _on_config_changed(self, new_config: Dict[str, Any]):
         """設定変更時のコールバック"""
         try:
+            # 設定を保存
             self.config_manager.update(new_config)
             self.config_manager.save_config()
-            self._apply_theme()  # テーマを再適用
-            self._update_ui_from_config()
+            
+            # フォントサイズだけ安全に更新
+            try:
+                self._apply_theme()
+            except Exception as e:
+                print(f"テーマ適用エラー（無視）: {e}")
+            
+            # UIを更新（エラーを無視）
+            try:
+                self._update_ui_from_config()
+            except Exception as e:
+                print(f"UI更新エラー（無視）: {e}")
             
             # 接続中なら一度切断して再接続（新しい設定を反映させるため）
             if self.chat_monitor and self.is_connected:
@@ -571,6 +599,8 @@ class MainWindow:
                 self._log_message("設定が更新されました")
         except Exception as e:
             print(f"設定変更エラー: {e}")
+            import traceback
+            traceback.print_exc()
             self._log_message(f"設定変更エラー: {e}")
     
     def _clear_chat(self):
