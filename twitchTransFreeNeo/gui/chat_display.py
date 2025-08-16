@@ -227,6 +227,11 @@ class SimpleChatDisplay(ttk.Frame):
         self.config = config
         # 表示を更新
         self._update_display()
+    
+    def update_font_size(self, font_size: int):
+        """フォントサイズを更新"""
+        # 今後の実装用（必要に応じて）
+        pass
 
 
 class SimpleStatusBar(ttk.Frame):
@@ -319,3 +324,16 @@ class SimpleStatusBar(ttk.Frame):
         else:
             self.set_status("未接続")
             self.set_component_status("twitch", "ERROR")
+    
+    def update_font_size(self, font_size: int):
+        """フォントサイズを更新"""
+        # 各ラベルのフォントサイズを更新
+        self.connection_indicator.configure(font=('', font_size))
+        self.status_label.configure(font=('', font_size - 2))
+        self.twitch_indicator.configure(font=('', font_size - 3))
+        self.twitch_status.configure(font=('', font_size))
+        self.translator_indicator.configure(font=('', font_size - 3))
+        self.translator_status.configure(font=('', font_size))
+        self.db_indicator.configure(font=('', font_size - 3))
+        self.db_status.configure(font=('', font_size))
+        self.stats_label.configure(font=('', font_size - 2))

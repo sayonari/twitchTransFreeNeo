@@ -335,26 +335,20 @@ class SettingsWindow:
         # 外観設定
         ttk.Label(frame, text="外観設定", font=('', 12, 'bold')).grid(row=0, column=0, columnspan=2, sticky='w', pady=10)
         
-        ttk.Label(frame, text="テーマ:").grid(row=1, column=0, sticky='w', padx=5, pady=2)
-        self.theme_var = tk.StringVar(value=self.config.get("theme", "light"))
-        theme_combo = ttk.Combobox(frame, textvariable=self.theme_var, width=27)
-        theme_combo['values'] = ['light', 'dark']
-        theme_combo.grid(row=1, column=1, sticky='ew', padx=5, pady=2)
-        
-        ttk.Label(frame, text="フォントサイズ:").grid(row=2, column=0, sticky='w', padx=5, pady=2)
+        ttk.Label(frame, text="フォントサイズ:").grid(row=1, column=0, sticky='w', padx=5, pady=2)
         self.font_size_var = tk.IntVar(value=self.config.get("font_size", 12))
-        ttk.Spinbox(frame, from_=8, to=24, textvariable=self.font_size_var, width=28).grid(row=2, column=1, sticky='ew', padx=5, pady=2)
+        ttk.Spinbox(frame, from_=8, to=24, textvariable=self.font_size_var, width=28).grid(row=1, column=1, sticky='ew', padx=5, pady=2)
         
         # ウィンドウサイズ
-        ttk.Label(frame, text="ウィンドウサイズ", font=('', 12, 'bold')).grid(row=3, column=0, columnspan=2, sticky='w', pady=(20, 10))
+        ttk.Label(frame, text="ウィンドウサイズ", font=('', 12, 'bold')).grid(row=2, column=0, columnspan=2, sticky='w', pady=(20, 10))
         
-        ttk.Label(frame, text="幅:").grid(row=4, column=0, sticky='w', padx=5, pady=2)
+        ttk.Label(frame, text="幅:").grid(row=3, column=0, sticky='w', padx=5, pady=2)
         self.window_width_var = tk.IntVar(value=self.config.get("window_width", 1200))
-        ttk.Spinbox(frame, from_=800, to=1920, textvariable=self.window_width_var, width=28).grid(row=4, column=1, sticky='ew', padx=5, pady=2)
+        ttk.Spinbox(frame, from_=800, to=1920, textvariable=self.window_width_var, width=28).grid(row=3, column=1, sticky='ew', padx=5, pady=2)
         
-        ttk.Label(frame, text="高さ:").grid(row=5, column=0, sticky='w', padx=5, pady=2)
+        ttk.Label(frame, text="高さ:").grid(row=4, column=0, sticky='w', padx=5, pady=2)
         self.window_height_var = tk.IntVar(value=self.config.get("window_height", 800))
-        ttk.Spinbox(frame, from_=600, to=1080, textvariable=self.window_height_var, width=28).grid(row=5, column=1, sticky='ew', padx=5, pady=2)
+        ttk.Spinbox(frame, from_=600, to=1080, textvariable=self.window_height_var, width=28).grid(row=4, column=1, sticky='ew', padx=5, pady=2)
         
         frame.grid_columnconfigure(1, weight=1)
     
@@ -395,7 +389,6 @@ class SettingsWindow:
             "tts_message_for_omitting": self.tts_omit_var.get(),
             "read_only_these_lang": [lang.strip() for lang in self.read_only_lang_var.get().split(',') if lang.strip()],
             
-            "theme": self.theme_var.get(),
             "font_size": self.font_size_var.get(),
             "window_width": self.window_width_var.get(),
             "window_height": self.window_height_var.get()

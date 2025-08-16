@@ -61,15 +61,10 @@ class MainWindow:
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
     
     def _apply_theme(self):
-        """テーマを適用"""
-        import platform
+        """フォントサイズとウィンドウサイズを適用"""
         from tkinter import ttk, font
         
-        theme = self.config_manager.get("theme", "light")
         font_size = self.config_manager.get("font_size", 12)
-        
-        # スタイル設定
-        style = ttk.Style()
         
         # フォントの設定
         default_font = font.nametofont("TkDefaultFont")
@@ -78,39 +73,13 @@ class MainWindow:
         text_font = font.nametofont("TkTextFont") 
         text_font.configure(size=font_size)
         
-        # テーマの設定
-        if theme == "dark":
-            # ダークモード
-            bg_color = '#2b2b2b'
-            fg_color = 'white'
-            select_bg = '#404040'
-            entry_bg = '#383838'
-        else:
-            # ライトモード
-            bg_color = 'white'
-            fg_color = 'black'
-            select_bg = '#e0e0e0'
-            entry_bg = 'white'
-        
-        # ルートウィンドウの背景色設定
-        self.root.configure(background=bg_color)
-        
-        # ttk ウィジェットのスタイル設定
-        style.configure(".", background=bg_color, foreground=fg_color, font=('', font_size))
-        style.configure("TLabel", background=bg_color, foreground=fg_color)
-        style.configure("TFrame", background=bg_color)
+        # スタイル設定
+        style = ttk.Style()
+        style.configure(".", font=('', font_size))
         style.configure("TButton", font=('', font_size))
-        style.configure("TEntry", fieldbackground=entry_bg, font=('', font_size))
-        style.configure("Treeview", background=entry_bg, foreground=fg_color, fieldbackground=entry_bg, font=('', font_size))
+        style.configure("TEntry", font=('', font_size))
+        style.configure("Treeview", font=('', font_size))
         style.configure("Treeview.Heading", font=('', font_size, 'bold'))
-        
-        # macOS固有の設定
-        if platform.system() == "Darwin":
-            try:
-                if theme == "light":
-                    self.root.tk.call("::tk::unsupported::MacWindowStyle", "style", self.root._w, "NSWindowStyleMaskTitled")
-            except:
-                pass
         
         # ウィンドウサイズの更新
         width = self.config_manager.get("window_width", 1200)
@@ -385,6 +354,10 @@ class MainWindow:
         
         # チャット表示設定更新
         self.chat_display.update_config(config)
+        
+        # フォントサイズ更新
+        font_size = config.get("font_size", 12)
+        self.status_bar.update_font_size(font_size)
         
         # 設定表示更新（簡易版では省略）
         
