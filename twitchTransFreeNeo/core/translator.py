@@ -97,8 +97,17 @@ class TranslationEngine:
             if not self.google_translator:
                 print("Google翻訳エラー: 翻訳エンジンが初期化できません")
                 return None
+            
+            # デバッグ: 翻訳サーバーURLを表示
+            if self.config.get("debug", False):
+                suffix = self.config.get("google_translate_suffix", "co.jp")
+                print(f"Google翻訳: translate.google.{suffix} を使用して翻訳中...")
                 
             result = await self.google_translator.translate(text, target_lang)
+            
+            if self.config.get("debug", False):
+                print(f"Google翻訳結果: {text[:30]}... → {result[:30] if result else 'None'}...")
+                
             return result
         except Exception as e:
             print(f"Google翻訳エラー: {e}")
@@ -107,26 +116,38 @@ class TranslationEngine:
     async def _translate_with_deepl(self, text: str, target_lang: str, source_lang: str) -> Optional[str]:
         """DeepL翻訳"""
         try:
+            if not self.deepl_translator:
+                print("DeepL翻訳エラー: DeepLトランスレーターが初期化されていません")
+                return await self._translate_with_google(text, target_lang)
+            
             # DeepL言語コード変換
             deepl_lang_dict = {
-                'de': 'DE', 'en': 'EN', 'fr': 'FR', 'es': 'ES', 
-                'pt': 'PT', 'it': 'IT', 'nl': 'NL', 'pl': 'PL', 
-                'ru': 'RU', 'ja': 'JA', 'zh-CN': 'ZH'
+                'de': 'DE', 'en': 'EN-US', 'fr': 'FR', 'es': 'ES', 
+                'pt': 'PT-PT', 'it': 'IT', 'nl': 'NL', 'pl': 'PL', 
+                'ru': 'RU', 'ja': 'JA', 'zh-CN': 'ZH', 'ko': 'KO'
             }
             
-            deepl_target = deepl_lang_dict.get(target_lang)
-            deepl_source = deepl_lang_dict.get(source_lang)
+            deepl_target = deepl_lang_dict.get(target_lang, target_lang.upper())
+            deepl_source = None if source_lang == "auto" else deepl_lang_dict.get(source_lang, source_lang.upper())
             
-            if deepl_target and (source_lang == "auto" or deepl_source):
+            # DeepL APIを正しく使用
+            if deepl_target:
+                # translate_text メソッドを使用
                 result = await asyncio.to_thread(
-                    deepl.translate,
-                    source_language=deepl_source if deepl_source else None,
-                    target_language=deepl_target,
-                    text=text
+                    self.deepl_translator.translate_text,
+                    text,
+                    target_lang=deepl_target,
+                    source_lang=deepl_source
                 )
-                return result
+                # DeepL APIの結果からテキストを取得
+                if result:
+                    return result.text if hasattr(result, 'text') else str(result)
+                else:
+                    print(f"DeepL翻訳エラー: 結果が空です")
+                    return await self._translate_with_google(text, target_lang)
             else:
                 # DeepLで対応していない言語はGoogleで翻訳
+                print(f"DeepL翻訳: 対応していない言語 {target_lang}, Googleにフォールバック")
                 return await self._translate_with_google(text, target_lang)
                 
         except Exception as e:

@@ -63,24 +63,59 @@ class MainWindow:
     def _apply_theme(self):
         """テーマを適用"""
         import platform
-        theme = self.config_manager.get("theme", "light")
+        from tkinter import ttk, font
         
-        if platform.system() == "Darwin":  # macOS
+        theme = self.config_manager.get("theme", "light")
+        font_size = self.config_manager.get("font_size", 12)
+        
+        # スタイル設定
+        style = ttk.Style()
+        
+        # フォントの設定
+        default_font = font.nametofont("TkDefaultFont")
+        default_font.configure(size=font_size)
+        
+        text_font = font.nametofont("TkTextFont") 
+        text_font.configure(size=font_size)
+        
+        # テーマの設定
+        if theme == "dark":
+            # ダークモード
+            bg_color = '#2b2b2b'
+            fg_color = 'white'
+            select_bg = '#404040'
+            entry_bg = '#383838'
+        else:
+            # ライトモード
+            bg_color = 'white'
+            fg_color = 'black'
+            select_bg = '#e0e0e0'
+            entry_bg = 'white'
+        
+        # ルートウィンドウの背景色設定
+        self.root.configure(background=bg_color)
+        
+        # ttk ウィジェットのスタイル設定
+        style.configure(".", background=bg_color, foreground=fg_color, font=('', font_size))
+        style.configure("TLabel", background=bg_color, foreground=fg_color)
+        style.configure("TFrame", background=bg_color)
+        style.configure("TButton", font=('', font_size))
+        style.configure("TEntry", fieldbackground=entry_bg, font=('', font_size))
+        style.configure("Treeview", background=entry_bg, foreground=fg_color, fieldbackground=entry_bg, font=('', font_size))
+        style.configure("Treeview.Heading", font=('', font_size, 'bold'))
+        
+        # macOS固有の設定
+        if platform.system() == "Darwin":
             try:
-                # macOSでのアピアランスモード設定
-                from tkinter import ttk
                 if theme == "light":
-                    # ライトモードを強制
                     self.root.tk.call("::tk::unsupported::MacWindowStyle", "style", self.root._w, "NSWindowStyleMaskTitled")
-                    # 背景色を明示的に白に設定
-                    self.root.configure(background='white')
-                    ttk.Style().configure(".", background='white', foreground='black')
-                else:
-                    # ダークモード
-                    self.root.configure(background='#2b2b2b')
-                    ttk.Style().configure(".", background='#2b2b2b', foreground='white')
             except:
                 pass
+        
+        # ウィンドウサイズの更新
+        width = self.config_manager.get("window_width", 1200)
+        height = self.config_manager.get("window_height", 800)
+        self.root.geometry(f"{width}x{height}")
     
     def _create_widgets(self):
         """ウィジェット作成"""

@@ -108,7 +108,7 @@ class SettingsWindow:
         
         # OAuthトークン取得ボタン
         ttk.Button(scrollable_frame, text="OAuthトークン取得", 
-                  command=lambda: webbrowser.open("https://twitchapps.com/tmi/")).grid(row=4, column=1, sticky='w', padx=5, pady=2)
+                  command=lambda: webbrowser.open("https://www.sayonari.com/trans_asr/ttfn_oauth.html")).grid(row=4, column=1, sticky='w', padx=5, pady=2)
         
         # 表示設定
         ttk.Label(scrollable_frame, text="表示設定", font=('', 12, 'bold')).grid(row=5, column=0, columnspan=2, sticky='w', pady=(20, 10))

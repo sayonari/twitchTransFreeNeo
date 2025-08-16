@@ -190,7 +190,7 @@ Windows 11でビルド済みバイナリが起動しない場合は、以下を�
 - **開発者**: sayonari (@husband_sayonari_omega)
 - **ベース**: twitchTransFreeNext（CUI版）も私が開発したもので、それをGUI化したものです
 - **協力者**: さぁたん（私の妻）
-- **バージョン**: 0.1.4_Beta
+- **バージョン**: 0.1.5_Beta
 
 ## 謝辞
 
