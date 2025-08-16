@@ -19,14 +19,23 @@ class SettingsWindow:
     
     def _create_window(self):
         """設定ウィンドウを作成"""
+        import platform
+        
         self.window = tk.Toplevel(self.parent)
         self.window.title("設定 - twitchTransFreeNeo")
         self.window.geometry("700x700")
         self.window.resizable(True, True)
         
-        # シンプルに前面表示のみ
-        self.window.lift()
-        self.window.transient(self.parent)
+        # OS別の処理
+        if platform.system() == 'Darwin':  # macOS
+            # macOSではgrab_setを使わない（フォーカス問題回避）
+            self.window.lift()
+            self.window.transient(self.parent)
+        else:  # Windows, Linux
+            # Windows/Linuxでは通常のモーダル設定
+            self.window.transient(self.parent)
+            self.window.grab_set()  # モーダル化
+            self.window.lift()
         
         # ノートブック（タブ）作成
         notebook = ttk.Notebook(self.window)
