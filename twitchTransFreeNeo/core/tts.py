@@ -242,6 +242,16 @@ class TTSEngine:
                         import winsound
                         winsound.PlaySound(tts_file, winsound.SND_FILENAME)
                         play_success = True
+                    elif platform.system() == 'Darwin':  # macOS
+                        if self.config.get("debug", False):
+                            print(f"TTS: Attempting macOS afplay: {tts_file}")
+                        result = os.system(f"afplay '{tts_file}'")
+                        if result == 0:
+                            play_success = True
+                            if self.config.get("debug", False):
+                                print("TTS: afplay completed successfully")
+                        else:
+                            print(f"TTS warning: macOS afplay failed with code {result}")
                     elif platform.system() == 'Linux':
                         if self.config.get("debug", False):
                             print(f"TTS: Attempting Linux audio commands: {tts_file}")

@@ -432,8 +432,17 @@ class SettingsWindow:
     
     def ok(self):
         """OK ボタン"""
-        self.apply()
+        new_config = self._collect_config()
+        is_valid, errors = self._validate_config(new_config)
+        
+        if not is_valid:
+            messagebox.showerror("設定エラー", "\n".join(errors))
+            return
+        
+        self.config = new_config
+        self.on_config_change(new_config)
         self.window.destroy()
+        messagebox.showinfo("設定", "設定を適用しました。\n\nTwitchに接続中の場合は、新しい設定を反映するため自動的に再接続されます。")
     
     def cancel(self):
         """キャンセル"""

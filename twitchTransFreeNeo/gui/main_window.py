@@ -732,6 +732,17 @@ class MainWindow:
         # イベントループ停止
         if self.loop and self.loop.is_running():
             self.loop.call_soon_threadsafe(self.loop.stop)
+            # ループスレッドの終了を待つ
+            if self.loop_thread and self.loop_thread.is_alive():
+                self.loop_thread.join(timeout=2)
+        
+        # pygameを明示的に終了（macOSのautorelease pool問題対策）
+        try:
+            import pygame
+            if pygame.get_init():
+                pygame.quit()
+        except:
+            pass
         
         # ウィンドウ終了
         self.root.destroy()
