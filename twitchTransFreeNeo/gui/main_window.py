@@ -36,6 +36,7 @@ class MainWindow:
         self._setup_window()
         self._create_widgets()
         self._load_config()
+        self._apply_theme()  # 起動時にフォントサイズを適用
         self._initialized = True  # 初期化完了フラグ
         
         # 自動接続チェック
@@ -83,18 +84,12 @@ class MainWindow:
     
     def _apply_theme(self):
         """フォントサイズを安全に適用"""
-        # 設定変更時はフォント変更を行わない（再起動を推奨）
-        if hasattr(self, '_initialized'):
-            return
-        
-        # 初回起動時のみフォント設定
         try:
             font_size = self.config_manager.get("font_size", 12)
-            width = self.config_manager.get("window_width", 1200)
-            height = self.config_manager.get("window_height", 800)
-            self.root.geometry(f"{width}x{height}")
-        except:
-            pass
+            # tkinter.fontを使わずに個別のウィジェットのフォントを直接設定
+            self._update_widget_fonts(font_size)
+        except Exception as e:
+            print(f"フォント適用エラー（無視）: {e}")
     
     def _create_widgets(self):
         """ウィジェット作成"""
@@ -369,14 +364,6 @@ class MainWindow:
                 except Exception as e:
                     print(f"チャット表示更新エラー（無視）: {e}")
             
-            # フォントサイズ更新（エラーを無視）
-            if hasattr(self, 'status_bar'):
-                try:
-                    font_size = config.get("font_size", 12)
-                    self.status_bar.update_font_size(font_size)
-                except Exception as e:
-                    print(f"ステータスバー更新エラー（無視）: {e}")
-            
             # 翻訳エンジン状態更新
             if hasattr(self, 'status_bar'):
                 try:
@@ -524,25 +511,24 @@ class MainWindow:
         """設定変更時のコールバック"""
         try:
             # フォントサイズが変更されたかチェック
-            old_font_size = self.config_manager.get("font_size", 12)
-            new_font_size = new_config.get("font_size", 12)
-            font_size_changed = old_font_size != new_font_size
+            font_changed = self.config_manager.get("font_size", 12) != new_config.get("font_size", 12)
             
             # 設定を保存
             self.config_manager.update(new_config)
             self.config_manager.save_config()
             
-            # フォントサイズが変更された場合は再起動を促す
-            if font_size_changed:
-                self._log_message("フォントサイズが変更されました。変更を反映するにはアプリケーションを再起動してください。")
-                messagebox.showinfo("再起動が必要", 
-                                  "フォントサイズの変更を反映するには、\nアプリケーションを再起動してください。")
-            
-            # UIを更新（フォントサイズ以外）
+            # UIを更新
             try:
                 self._update_ui_from_config()
             except Exception as e:
                 print(f"UI更新エラー（無視）: {e}")
+            
+            # フォントサイズが変更された場合は個別に適用
+            if font_changed:
+                messagebox.showinfo("フォントサイズ変更", 
+                                  "フォントサイズが変更されました。\n完全に反映するにはアプリケーションを再起動してください。")
+                # 部分的にフォントを適用
+                self._apply_theme()
             
             # 接続中なら一度切断して再接続（新しい設定を反映させるため）
             if self.chat_monitor and self.is_connected:
@@ -559,8 +545,6 @@ class MainWindow:
                 self._log_message("設定が更新されました")
         except Exception as e:
             print(f"設定変更エラー: {e}")
-            import traceback
-            traceback.print_exc()
             self._log_message(f"設定変更エラー: {e}")
     
     def _clear_chat(self):
@@ -745,6 +729,25 @@ class MainWindow:
         
         # ウィンドウ終了
         self.root.destroy()
+    
+    def _update_widget_fonts(self, font_size: int):
+        """個別ウィジェットのフォントを更新（tkinter.fontを使わない）"""
+        try:
+            # ツールバーのラベル更新
+            if hasattr(self, 'channel_label'):
+                self.channel_label.configure(font=('', font_size - 2))
+            if hasattr(self, 'bot_label'):
+                self.bot_label.configure(font=('', font_size - 2))
+            
+            # ステータスバー更新
+            if hasattr(self, 'status_bar'):
+                self.status_bar.update_font_size(font_size)
+            
+            # チャット表示のフォント更新（必要に応じて）
+            if hasattr(self, 'chat_display'):
+                self.chat_display.update_font_size(font_size)
+        except Exception as e:
+            print(f"個別フォント更新エラー: {e}")
     
     
     def run(self):
