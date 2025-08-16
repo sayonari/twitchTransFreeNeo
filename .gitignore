@@ -199,3 +199,4 @@ twitchTransFreeNext/
 *.pyc
 # Test files
 test_*.py
+config.json
