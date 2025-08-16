@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import asyncio
 import threading
+import sys
 from typing import Dict, Any, Optional
 try:
     from ..utils.config_manager import ConfigManager
@@ -76,6 +77,11 @@ class MainWindow:
         
         # ウィンドウ状態変更イベントをバインド
         self.root.bind("<Configure>", self._on_window_configure)
+        
+        # macOSフォーカス処理の追加
+        if sys.platform == 'darwin':
+            self.root.bind("<FocusIn>", self._on_focus_in)
+            self.root.bind("<Button-1>", self._on_click)
         
         # 終了処理
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -193,14 +199,14 @@ class MainWindow:
         toolbar.pack(fill='x', padx=5, pady=5)
         
         # 接続ボタン
-        self.connect_button = ttk.Button(toolbar, text="接続開始", command=self._toggle_connection)
+        self.connect_button = ttk.Button(toolbar, text="接続開始", command=self._toggle_connection, takefocus=True)
         self.connect_button.pack(side='left', padx=2)
         
         # 設定ボタン
-        ttk.Button(toolbar, text="設定", command=self._open_settings).pack(side='left', padx=2)
+        ttk.Button(toolbar, text="設定", command=self._open_settings, takefocus=True).pack(side='left', padx=2)
         
         # 診断ボタン
-        ttk.Button(toolbar, text="診断", command=self._open_diagnostics).pack(side='left', padx=2)
+        ttk.Button(toolbar, text="診断", command=self._open_diagnostics, takefocus=True).pack(side='left', padx=2)
         
         # セパレータ
         ttk.Separator(toolbar, orient='vertical').pack(side='left', fill='y', padx=5)
@@ -221,8 +227,8 @@ class MainWindow:
         right_menu = ttk.Frame(toolbar)
         right_menu.pack(side='right')
         
-        ttk.Button(right_menu, text="履歴クリア", command=self._clear_chat).pack(side='right', padx=2)
-        ttk.Button(right_menu, text="ヘルプ", command=self._show_help).pack(side='right', padx=2)
+        ttk.Button(right_menu, text="履歴クリア", command=self._clear_chat, takefocus=True).pack(side='right', padx=2)
+        ttk.Button(right_menu, text="ヘルプ", command=self._show_help, takefocus=True).pack(side='right', padx=2)
     
     def _create_simple_info_panel(self, parent):
         """簡易情報パネル作成"""
@@ -768,6 +774,17 @@ class MainWindow:
         
         # ウィンドウ終了
         self.root.destroy()
+    
+    def _on_focus_in(self, event):
+        """フォーカスイン時の処理（macOS用）"""
+        # ウィンドウ全体を更新してボタンを再描画
+        self.root.update_idletasks()
+    
+    def _on_click(self, event):
+        """クリック時の処理（macOS用）"""
+        # フォーカスを明示的にウィンドウに設定
+        self.root.focus_force()
+        self.root.update_idletasks()
     
     def run(self):
         """アプリケーション実行"""
