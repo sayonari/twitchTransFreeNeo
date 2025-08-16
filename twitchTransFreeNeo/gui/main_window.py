@@ -773,16 +773,27 @@ class MainWindow:
     def _update_widget_fonts_recursive(self, widget, font_size: int):
         """再帰的にウィジェットのフォントを更新"""
         try:
-            # ttk.Label, ttk.Button, tk.Labelなどのフォント設定
-            if isinstance(widget, (ttk.Label, ttk.Button, tk.Label, tk.Button)):
-                widget.configure(font=('', font_size))
-            elif isinstance(widget, tk.Text):
-                widget.configure(font=('', font_size))
+            # フォント設定可能なウィジェットのみ処理
+            widget_class = widget.__class__.__name__
+            
+            # tk系ウィジェット（fontオプションを持つ）
+            if isinstance(widget, (tk.Label, tk.Button, tk.Text, tk.Entry)):
+                try:
+                    widget.configure(font=('', font_size))
+                except tk.TclError:
+                    pass
+            # ttk系ウィジェット（一部のみfontオプションを持つ）
+            elif isinstance(widget, (ttk.Label, ttk.Button)):
+                try:
+                    widget.configure(font=('', font_size))
+                except tk.TclError:
+                    pass
+            # Frameやその他のウィジェットは無視
             
             # 子ウィジェットも再帰的に処理
             for child in widget.winfo_children():
                 self._update_widget_fonts_recursive(child, font_size)
-        except:
+        except Exception:
             pass  # エラーは無視
     
     
