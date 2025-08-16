@@ -376,10 +376,18 @@ class MainWindow:
     
     def _toggle_connection(self):
         """接続切り替え"""
-        if self.is_connected:
-            self._disconnect()
-        else:
-            self._connect()
+        # ボタンを一時的に無効化（連続クリック防止）
+        self.connect_button.configure(state='disabled')
+        self.root.update_idletasks()
+        
+        try:
+            if self.is_connected:
+                self._disconnect()
+            else:
+                self._connect()
+        finally:
+            # 1秒後にボタンを再有効化
+            self.root.after(1000, lambda: self.connect_button.configure(state='normal'))
     
     def _connect(self):
         """接続開始"""

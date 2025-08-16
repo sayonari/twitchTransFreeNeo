@@ -115,6 +115,7 @@ jobs:
       - name: Archive with zip (Windows)
         if: ${{ matrix.archive == 'zip' }}
         run: |
+          Copy-Item -Path cacert.pem -Destination dist/
           Copy-Item -Path README.md -Destination dist/ -ErrorAction SilentlyContinue
           powershell Compress-Archive -Path dist/* -DestinationPath twitchTransFreeNeo_${{ steps.get_version.outputs.version }}_${{ matrix.env }}.zip
 
@@ -123,6 +124,7 @@ jobs:
         run: |
           ARCHIVE_NAME="twitchTransFreeNeo_${{ steps.get_version.outputs.version }}_${{ matrix.env }}"
           mv dist "$ARCHIVE_NAME"
+          cp cacert.pem "$ARCHIVE_NAME/"
           if [ -f README.md ]; then
             cp README.md "$ARCHIVE_NAME/"
           fi

@@ -9,7 +9,18 @@ class ConfigManager:
     """設定管理クラス - JSONベースの設定システム"""
     
     def __init__(self, config_file: str = "config.json"):
-        self.config_file = config_file
+        # 実行ファイルと同じディレクトリに設定ファイルを配置
+        import sys
+        if getattr(sys, 'frozen', False):
+            # PyInstallerでビルドされた場合
+            application_path = os.path.dirname(sys.executable)
+        else:
+            # 通常のPythonスクリプトとして実行された場合
+            application_path = os.path.dirname(os.path.abspath(__file__))
+            # プロジェクトルートに配置（2階層上）
+            application_path = os.path.dirname(os.path.dirname(application_path))
+        
+        self.config_file = os.path.join(application_path, config_file)
         self.config = self._load_default_config()
         
         # 設定ファイルが存在しない場合、デフォルト設定で作成
