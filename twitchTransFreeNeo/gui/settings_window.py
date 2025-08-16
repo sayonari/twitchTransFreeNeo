@@ -24,6 +24,10 @@ class SettingsWindow:
         self.window.geometry("700x700")
         self.window.resizable(True, True)
         
+        # ウィンドウを前面に
+        self.window.lift()
+        self.window.focus_force()
+        
         # モーダルにする
         self.window.transient(self.parent)
         self.window.grab_set()
@@ -66,10 +70,10 @@ class SettingsWindow:
         button_frame = tk.Frame(self.window)
         button_frame.pack(fill='x', padx=10, pady=10)
         
-        # ボタン
-        ttk.Button(button_frame, text="キャンセル", command=self.cancel).pack(side='right', padx=5)
-        ttk.Button(button_frame, text="適用", command=self.apply).pack(side='right', padx=5)
-        ttk.Button(button_frame, text="OK", command=self.ok).pack(side='right', padx=5)
+        # ボタン（大きめに）
+        ttk.Button(button_frame, text="キャンセル", command=self.cancel, width=10).pack(side='right', padx=5, ipady=5)
+        ttk.Button(button_frame, text="適用", command=self.apply, width=10).pack(side='right', padx=5, ipady=5)
+        ttk.Button(button_frame, text="OK", command=self.ok, width=10).pack(side='right', padx=5, ipady=5)
     
     def _create_basic_tab(self, notebook):
         """基本設定タブ"""
@@ -335,9 +339,23 @@ class SettingsWindow:
         # 外観設定
         ttk.Label(frame, text="外観設定", font=('', 12, 'bold')).grid(row=0, column=0, columnspan=2, sticky='w', pady=10)
         
-        ttk.Label(frame, text="フォントサイズ:").grid(row=1, column=0, sticky='w', padx=5, pady=2)
+        ttk.Label(frame, text="フォントサイズ:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
         self.font_size_var = tk.IntVar(value=self.config.get("font_size", 12))
-        ttk.Spinbox(frame, from_=8, to=24, textvariable=self.font_size_var, width=28).grid(row=1, column=1, sticky='ew', padx=5, pady=2)
+        
+        # スピンボックスとボタンを別々に作成
+        font_frame = ttk.Frame(frame)
+        font_frame.grid(row=1, column=1, sticky='ew', padx=5, pady=5)
+        
+        # テキスト入力部分
+        font_entry = ttk.Entry(font_frame, textvariable=self.font_size_var, width=10)
+        font_entry.pack(side='left', padx=(0, 5))
+        
+        # アップダウンボタン
+        btn_frame = ttk.Frame(font_frame)
+        btn_frame.pack(side='left')
+        
+        ttk.Button(btn_frame, text="▲", width=3, command=lambda: self.font_size_var.set(min(24, self.font_size_var.get() + 1))).pack()
+        ttk.Button(btn_frame, text="▼", width=3, command=lambda: self.font_size_var.set(max(8, self.font_size_var.get() - 1))).pack()
         
         # ウィンドウサイズ
         ttk.Label(frame, text="ウィンドウサイズ", font=('', 12, 'bold')).grid(row=2, column=0, columnspan=2, sticky='w', pady=(20, 10))

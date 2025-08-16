@@ -34,10 +34,11 @@ class MainWindow:
         self.loop_thread = None
         
         self._setup_window()
-        self._apply_theme()  # テーマを適用
         self._initialized = True  # 初期化完了フラグ
         self._create_widgets()
         self._load_config()
+        # テーマ適用は最後に
+        self.root.after(100, self._apply_theme)
         
         # 自動接続チェック
         if self.config_manager.get("auto_start", False):
@@ -83,43 +84,29 @@ class MainWindow:
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
     
     def _apply_theme(self):
-        """フォントサイズとウィンドウサイズを適用"""
+        """フォントサイズを安全に適用"""
+        # 初期化が完了していない場合は何もしない
+        if not hasattr(self, 'root') or not self.root.winfo_exists():
+            return
+        
         try:
-            from tkinter import ttk, font
-            
             font_size = self.config_manager.get("font_size", 12)
             
-            # フォントの設定
-            try:
-                default_font = font.nametofont("TkDefaultFont")
-                default_font.configure(size=font_size)
-            except:
-                pass
+            # スタイル設定のみ（フォントオブジェクトは変更しない）
+            from tkinter import ttk
+            style = ttk.Style()
+            style.configure("TButton", font=('', font_size))
+            style.configure("TEntry", font=('', font_size))
+            style.configure("TLabel", font=('', font_size))
             
-            try:
-                text_font = font.nametofont("TkTextFont") 
-                text_font.configure(size=font_size)
-            except:
-                pass
-            
-            # スタイル設定
-            try:
-                style = ttk.Style()
-                style.configure(".", font=('', font_size))
-                style.configure("TButton", font=('', font_size))
-                style.configure("TEntry", font=('', font_size))
-                style.configure("Treeview", font=('', font_size))
-                style.configure("Treeview.Heading", font=('', font_size, 'bold'))
-            except:
-                pass
-            
-            # ウィンドウサイズの更新（設定変更時はサイズ変更しない）
+            # ウィンドウが初期化されていない場合のみサイズ設定
             if not hasattr(self, '_initialized'):
                 width = self.config_manager.get("window_width", 1200)
                 height = self.config_manager.get("window_height", 800)
                 self.root.geometry(f"{width}x{height}")
-        except Exception as e:
-            print(f"フォント設定エラー: {e}")
+        except:
+            # エラーは無視
+            pass
     
     def _create_widgets(self):
         """ウィジェット作成"""
@@ -425,21 +412,10 @@ class MainWindow:
     
     def _toggle_connection(self):
         """接続切り替え"""
-        # 連続クリック防止
-        if hasattr(self, '_connection_in_progress'):
-            return
-        
-        self._connection_in_progress = True
-        try:
-            if self.is_connected:
-                self._disconnect()
-            else:
-                self._connect()
-        finally:
-            # 少し待ってからフラグをリセット
-            def reset_flag():
-                self._connection_in_progress = False
-            self.root.after(200, reset_flag)
+        if self.is_connected:
+            self._disconnect()
+        else:
+            self._connect()
     
     def _connect(self):
         """接続開始"""
@@ -535,18 +511,8 @@ class MainWindow:
     
     def _open_diagnostics(self):
         """診断ウィンドウを開く"""
-        # 連続クリック防止
-        if hasattr(self, '_diagnostics_opening'):
-            return
-        
-        self._diagnostics_opening = True
-        try:
-            from ..utils.diagnostics import DiagnosticsWindow
-            DiagnosticsWindow(self.root, self.config_manager.get_all())
-        finally:
-            def reset_flag():
-                self._diagnostics_opening = False
-            self.root.after(200, reset_flag)
+        from ..utils.diagnostics import DiagnosticsWindow
+        DiagnosticsWindow(self.root, self.config_manager.get_all())
     
     def _open_settings(self):
         """設定画面を開く"""
@@ -554,6 +520,7 @@ class MainWindow:
         if self.settings_window:
             try:
                 self.settings_window.window.lift()
+                self.settings_window.window.focus_force()
                 return
             except:
                 self.settings_window = None
