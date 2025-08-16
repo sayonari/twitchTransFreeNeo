@@ -342,7 +342,7 @@ class SettingsWindow:
         ttk.Label(frame, text="フォントサイズ:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
         self.font_size_var = tk.IntVar(value=self.config.get("font_size", 12))
         
-        # スピンボックスとボタンを別々に作成
+        # シンプルなエントリーのみ（8-24の範囲で直接入力）
         font_frame = ttk.Frame(frame)
         font_frame.grid(row=1, column=1, sticky='ew', padx=5, pady=5)
         
@@ -350,57 +350,8 @@ class SettingsWindow:
         font_entry = ttk.Entry(font_frame, textvariable=self.font_size_var, width=10)
         font_entry.pack(side='left', padx=(0, 5))
         
-        # アップダウンボタン
-        btn_frame = ttk.Frame(font_frame)
-        btn_frame.pack(side='left')
-        
-        # 連続クリック用の状態管理
-        self._font_repeat_task = None
-        self._font_repeat_delay = 500  # 初回の遅延（ミリ秒）
-        self._font_repeat_interval = 100  # 繰り返し間隔（ミリ秒）
-        
-        def increase_font():
-            current = self.font_size_var.get()
-            if current < 24:
-                self.font_size_var.set(current + 1)
-        
-        def decrease_font():
-            current = self.font_size_var.get()
-            if current > 8:
-                self.font_size_var.set(current - 1)
-        
-        def start_repeat(func):
-            """ボタン押下時に繰り返し開始"""
-            func()  # 最初の実行
-            self._font_repeat_task = self.window.after(self._font_repeat_delay, 
-                                                      lambda: continue_repeat(func))
-        
-        def continue_repeat(func):
-            """繰り返し実行"""
-            func()
-            self._font_repeat_task = self.window.after(self._font_repeat_interval, 
-                                                      lambda: continue_repeat(func))
-        
-        def stop_repeat():
-            """繰り返し停止"""
-            if self._font_repeat_task:
-                self.window.after_cancel(self._font_repeat_task)
-                self._font_repeat_task = None
-        
-        # ボタン作成
-        up_btn = ttk.Button(btn_frame, text="▲", width=5)
-        up_btn.pack(pady=1)
-        down_btn = ttk.Button(btn_frame, text="▼", width=5)
-        down_btn.pack(pady=1)
-        
-        # イベントバインディング（長押しで連続実行）
-        up_btn.bind('<ButtonPress-1>', lambda e: start_repeat(increase_font))
-        up_btn.bind('<ButtonRelease-1>', lambda e: stop_repeat())
-        up_btn.bind('<Leave>', lambda e: stop_repeat())  # ボタンから離れたら停止
-        
-        down_btn.bind('<ButtonPress-1>', lambda e: start_repeat(decrease_font))
-        down_btn.bind('<ButtonRelease-1>', lambda e: stop_repeat())
-        down_btn.bind('<Leave>', lambda e: stop_repeat())  # ボタンから離れたら停止
+        # 範囲の説明ラベル
+        ttk.Label(font_frame, text="(8-24)").pack(side='left')
         
         # ウィンドウサイズ
         ttk.Label(frame, text="ウィンドウサイズ", font=('', 12, 'bold')).grid(row=2, column=0, columnspan=2, sticky='w', pady=(20, 10))
@@ -417,6 +368,13 @@ class SettingsWindow:
     
     def _collect_config(self) -> Dict[str, Any]:
         """GUI から設定を収集"""
+        # フォントサイズの範囲チェック
+        font_size = self.font_size_var.get()
+        if font_size < 8:
+            font_size = 8
+        elif font_size > 24:
+            font_size = 24
+        
         new_config = {
             "twitch_channel": self.channel_var.get().strip(),
             "trans_username": self.username_var.get().strip(),
@@ -452,7 +410,7 @@ class SettingsWindow:
             "tts_message_for_omitting": self.tts_omit_var.get(),
             "read_only_these_lang": [lang.strip() for lang in self.read_only_lang_var.get().split(',') if lang.strip()],
             
-            "font_size": self.font_size_var.get(),
+            "font_size": font_size,  # 範囲チェック済みの値を使用
             "window_width": self.window_width_var.get(),
             "window_height": self.window_height_var.get()
         }
@@ -492,9 +450,7 @@ class SettingsWindow:
         self.config = new_config
         try:
             self.on_config_change(new_config)
-            # フォントサイズ変更の場合は特別なメッセージを表示しない（メインウィンドウ側で処理）
-            if 'font_size' not in new_config or new_config.get('font_size') == self.config.get('font_size'):
-                messagebox.showinfo("設定", "設定を適用しました。\n\nTwitchに接続中の場合は、新しい設定を反映するため自動的に再接続されます。")
+            # messageboxは使わない（クラッシュ防止）
         except Exception as e:
             print(f"設定適用エラー: {e}")
     

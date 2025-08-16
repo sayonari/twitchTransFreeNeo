@@ -523,12 +523,15 @@ class MainWindow:
             except Exception as e:
                 print(f"UI更新エラー（無視）: {e}")
             
-            # フォントサイズが変更された場合は個別に適用
+            # フォントサイズが変更された場合は個別に適用（messageboxは使わない）
             if font_changed:
-                messagebox.showinfo("フォントサイズ変更", 
-                                  "フォントサイズが変更されました。\n完全に反映するにはアプリケーションを再起動してください。")
+                # ログメッセージとして表示
+                self._log_message("フォントサイズが変更されました。完全に反映するには再起動してください。")
                 # 部分的にフォントを適用
-                self._apply_theme()
+                try:
+                    self._apply_theme()
+                except Exception as e:
+                    print(f"フォント適用エラー: {e}")
             
             # 接続中なら一度切断して再接続（新しい設定を反映させるため）
             if self.chat_monitor and self.is_connected:
