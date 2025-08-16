@@ -34,11 +34,9 @@ class MainWindow:
         self.loop_thread = None
         
         self._setup_window()
-        self._initialized = True  # 初期化完了フラグ
         self._create_widgets()
         self._load_config()
-        # テーマ適用は最後に
-        self.root.after(100, self._apply_theme)
+        self._initialized = True  # 初期化完了フラグ
         
         # 自動接続チェック
         if self.config_manager.get("auto_start", False):
@@ -85,27 +83,17 @@ class MainWindow:
     
     def _apply_theme(self):
         """フォントサイズを安全に適用"""
-        # 初期化が完了していない場合は何もしない
-        if not hasattr(self, 'root') or not self.root.winfo_exists():
+        # 設定変更時はフォント変更を行わない（再起動を推奨）
+        if hasattr(self, '_initialized'):
             return
         
+        # 初回起動時のみフォント設定
         try:
             font_size = self.config_manager.get("font_size", 12)
-            
-            # スタイル設定のみ（フォントオブジェクトは変更しない）
-            from tkinter import ttk
-            style = ttk.Style()
-            style.configure("TButton", font=('', font_size))
-            style.configure("TEntry", font=('', font_size))
-            style.configure("TLabel", font=('', font_size))
-            
-            # ウィンドウが初期化されていない場合のみサイズ設定
-            if not hasattr(self, '_initialized'):
-                width = self.config_manager.get("window_width", 1200)
-                height = self.config_manager.get("window_height", 800)
-                self.root.geometry(f"{width}x{height}")
+            width = self.config_manager.get("window_width", 1200)
+            height = self.config_manager.get("window_height", 800)
+            self.root.geometry(f"{width}x{height}")
         except:
-            # エラーは無視
             pass
     
     def _create_widgets(self):
@@ -535,17 +523,22 @@ class MainWindow:
     def _on_config_changed(self, new_config: Dict[str, Any]):
         """設定変更時のコールバック"""
         try:
+            # フォントサイズが変更されたかチェック
+            old_font_size = self.config_manager.get("font_size", 12)
+            new_font_size = new_config.get("font_size", 12)
+            font_size_changed = old_font_size != new_font_size
+            
             # 設定を保存
             self.config_manager.update(new_config)
             self.config_manager.save_config()
             
-            # フォントサイズだけ安全に更新
-            try:
-                self._apply_theme()
-            except Exception as e:
-                print(f"テーマ適用エラー（無視）: {e}")
+            # フォントサイズが変更された場合は再起動を促す
+            if font_size_changed:
+                self._log_message("フォントサイズが変更されました。変更を反映するにはアプリケーションを再起動してください。")
+                messagebox.showinfo("再起動が必要", 
+                                  "フォントサイズの変更を反映するには、\nアプリケーションを再起動してください。")
             
-            # UIを更新（エラーを無視）
+            # UIを更新（フォントサイズ以外）
             try:
                 self._update_ui_from_config()
             except Exception as e:
