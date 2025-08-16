@@ -83,7 +83,15 @@ class TTSEngine:
     def put(self, text: str, lang: str):
         """TTS読み上げキューに追加"""
         if self.is_enabled():
+            if self.config.get("debug", False):
+                print(f"TTS Engine: Adding to queue - text='{text[:30]}...', lang={lang}")
+                print(f"TTS Engine: Queue size before: {self.synth_queue.qsize()}")
             self.synth_queue.put([text, lang])
+            if self.config.get("debug", False):
+                print(f"TTS Engine: Queue size after: {self.synth_queue.qsize()}")
+        else:
+            if self.config.get("debug", False):
+                print("TTS Engine: TTS is disabled, not adding to queue")
 
     def is_enabled(self) -> bool:
         """TTSが有効かどうかをチェック"""

@@ -367,18 +367,30 @@ if TWITCHIO_AVAILABLE:
             """TTS読み上げメッセージを追加"""
             # TTSが無効の場合は何もしない
             if not self.config.get("tts_enabled", False):
+                if self.config.get("debug", False):
+                    print("TTS: Disabled in config")
                 return
+            
+            if self.config.get("debug", False):
+                print(f"TTS: Processing message from {chat_message.user}")
+                print(f"TTS: tts_in={self.config.get('tts_in', False)}, tts_out={self.config.get('tts_out', False)}")
             
             # 言語制限チェック
             read_only_langs = self.config.get("read_only_these_lang", [])
             if read_only_langs and chat_message.lang not in read_only_langs:
+                if self.config.get("debug", False):
+                    print(f"TTS: Language {chat_message.lang} not in allowed list: {read_only_langs}")
                 return
             
             # 入力TTS（絵文字除去済みのメッセージ）
             if self.config.get("tts_in", False) and chat_message.cleaned_content:
                 tts_text = self._build_tts_text(chat_message, chat_message.cleaned_content, chat_message.lang, is_input=True)
                 if tts_text:
+                    if self.config.get("debug", False):
+                        print(f"TTS: Adding input text to queue: {tts_text[:50]}...")
                     self.tts_engine.put(tts_text, chat_message.lang)
+                elif self.config.get("debug", False):
+                    print("TTS: No input text generated")
             
             # 出力TTS（翻訳されたメッセージ）
             if self.config.get("tts_out", False) and chat_message.translation:
@@ -386,7 +398,11 @@ if TWITCHIO_AVAILABLE:
                 cleaned_translated = self._clean_text_for_tts(chat_message.translation)
                 tts_text = self._build_tts_text(chat_message, cleaned_translated, chat_message.target_lang, is_input=False)
                 if tts_text:
+                    if self.config.get("debug", False):
+                        print(f"TTS: Adding output text to queue: {tts_text[:50]}...")
                     self.tts_engine.put(tts_text, chat_message.target_lang)
+                elif self.config.get("debug", False):
+                    print("TTS: No output text generated")
     
         def _build_tts_text(self, chat_message: ChatMessage, content: str, lang: str, is_input: bool = True) -> str:
             """TTS用のテキストを構築"""
