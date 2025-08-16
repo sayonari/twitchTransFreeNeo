@@ -49,13 +49,33 @@ class MainWindow:
             __version__ = "Unknown"
         self.root.title(f"twitchTransFreeNeo v{__version__}")
         
-        # ウィンドウサイズ設定（デフォルトを大きく）
+        # ウィンドウサイズと位置の設定
         width = self.config_manager.get("window_width", 1200)
         height = self.config_manager.get("window_height", 800)
-        self.root.geometry(f"{width}x{height}")
+        x = self.config_manager.get("window_x", None)
+        y = self.config_manager.get("window_y", None)
+        
+        # ウィンドウサイズを設定
+        if x is not None and y is not None:
+            # 保存された位置がある場合
+            self.root.geometry(f"{width}x{height}+{x}+{y}")
+        else:
+            # 初回起動時は画面中央に配置
+            self.root.geometry(f"{width}x{height}")
+            self.root.update_idletasks()  # ウィンドウサイズを確定
+            
+            # 画面サイズを取得して中央に配置
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            x = (screen_width - width) // 2
+            y = (screen_height - height) // 2
+            self.root.geometry(f"{width}x{height}+{x}+{y}")
         
         # 最小サイズ設定
         self.root.minsize(1000, 600)
+        
+        # ウィンドウ状態変更イベントをバインド
+        self.root.bind("<Configure>", self._on_window_configure)
         
         # 終了処理
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
@@ -632,6 +652,39 @@ class MainWindow:
         except:
             pass
     
+    def _on_window_configure(self, event=None):
+        """ウィンドウ設定変更時のコールバック"""
+        # ウィンドウのリサイズや移動が頻繁に発生するため、
+        # 遅延保存を使用してパフォーマンスを向上
+        if hasattr(self, '_geometry_save_timer'):
+            self.root.after_cancel(self._geometry_save_timer)
+        # 500ms後に保存（連続的な変更が終わってから保存）
+        self._geometry_save_timer = self.root.after(500, self._save_window_geometry)
+    
+    def _save_window_geometry(self):
+        """ウィンドウの位置とサイズを保存"""
+        try:
+            # 現在のウィンドウジオメトリを取得
+            geometry = self.root.geometry()
+            # 例: "1200x800+100+50" の形式をパース
+            match = geometry.split('+')
+            if len(match) == 3:
+                size = match[0].split('x')
+                if len(size) == 2:
+                    width = int(size[0])
+                    height = int(size[1])
+                    x = int(match[1])
+                    y = int(match[2])
+                    
+                    # 設定を更新（最小サイズ以上の場合のみ保存）
+                    if width >= 1000 and height >= 600:
+                        self.config_manager.set("window_width", width)
+                        self.config_manager.set("window_height", height)
+                        self.config_manager.set("window_x", x)
+                        self.config_manager.set("window_y", y)
+        except Exception as e:
+            print(f"ウィンドウジオメトリ保存エラー: {e}")
+    
     def _show_help(self):
         """ヘルプ表示"""
         try:
@@ -666,6 +719,9 @@ class MainWindow:
     
     def _on_closing(self):
         """ウィンドウ終了時"""
+        # ウィンドウの位置とサイズを保存
+        self._save_window_geometry()
+        
         # 接続停止
         if self.is_connected:
             self._disconnect()
