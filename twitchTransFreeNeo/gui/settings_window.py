@@ -354,6 +354,11 @@ class SettingsWindow:
         btn_frame = ttk.Frame(font_frame)
         btn_frame.pack(side='left')
         
+        # 連続クリック用の状態管理
+        self._font_repeat_task = None
+        self._font_repeat_delay = 500  # 初回の遅延（ミリ秒）
+        self._font_repeat_interval = 100  # 繰り返し間隔（ミリ秒）
+        
         def increase_font():
             current = self.font_size_var.get()
             if current < 24:
@@ -364,11 +369,38 @@ class SettingsWindow:
             if current > 8:
                 self.font_size_var.set(current - 1)
         
-        # シンプルなボタン（連続クリック可能）
-        up_btn = ttk.Button(btn_frame, text="▲", width=5, command=increase_font)
+        def start_repeat(func):
+            """ボタン押下時に繰り返し開始"""
+            func()  # 最初の実行
+            self._font_repeat_task = self.window.after(self._font_repeat_delay, 
+                                                      lambda: continue_repeat(func))
+        
+        def continue_repeat(func):
+            """繰り返し実行"""
+            func()
+            self._font_repeat_task = self.window.after(self._font_repeat_interval, 
+                                                      lambda: continue_repeat(func))
+        
+        def stop_repeat():
+            """繰り返し停止"""
+            if self._font_repeat_task:
+                self.window.after_cancel(self._font_repeat_task)
+                self._font_repeat_task = None
+        
+        # ボタン作成
+        up_btn = ttk.Button(btn_frame, text="▲", width=5)
         up_btn.pack(pady=1)
-        down_btn = ttk.Button(btn_frame, text="▼", width=5, command=decrease_font)
+        down_btn = ttk.Button(btn_frame, text="▼", width=5)
         down_btn.pack(pady=1)
+        
+        # イベントバインディング（長押しで連続実行）
+        up_btn.bind('<ButtonPress-1>', lambda e: start_repeat(increase_font))
+        up_btn.bind('<ButtonRelease-1>', lambda e: stop_repeat())
+        up_btn.bind('<Leave>', lambda e: stop_repeat())  # ボタンから離れたら停止
+        
+        down_btn.bind('<ButtonPress-1>', lambda e: start_repeat(decrease_font))
+        down_btn.bind('<ButtonRelease-1>', lambda e: stop_repeat())
+        down_btn.bind('<Leave>', lambda e: stop_repeat())  # ボタンから離れたら停止
         
         # ウィンドウサイズ
         ttk.Label(frame, text="ウィンドウサイズ", font=('', 12, 'bold')).grid(row=2, column=0, columnspan=2, sticky='w', pady=(20, 10))

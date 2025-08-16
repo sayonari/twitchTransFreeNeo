@@ -733,22 +733,32 @@ class MainWindow:
     def _update_widget_fonts(self, font_size: int):
         """個別ウィジェットのフォントを更新（tkinter.fontを使わない）"""
         try:
-            # デバッグ出力
-            print(f"[DEBUG] フォントサイズ適用中: {font_size}")
             
-            # ツールバーのボタン更新
+            # ツールバーのボタン更新（ttk.Buttonはfontオプションを持つ）
             if hasattr(self, 'connect_button'):
-                self.connect_button.configure(font=('', font_size))
+                try:
+                    self.connect_button.configure(font=('', font_size))
+                except tk.TclError:
+                    pass  # fontオプションがない場合は無視
             
             # ツールバーのラベル更新
             if hasattr(self, 'channel_label'):
-                self.channel_label.configure(font=('', font_size))
+                try:
+                    self.channel_label.configure(font=('', font_size))
+                except tk.TclError:
+                    pass
             if hasattr(self, 'bot_label'):
-                self.bot_label.configure(font=('', font_size))
+                try:
+                    self.bot_label.configure(font=('', font_size))
+                except tk.TclError:
+                    pass
             
             # 情報パネルのテキスト更新
             if hasattr(self, 'log_text'):
-                self.log_text.configure(font=('', font_size))
+                try:
+                    self.log_text.configure(font=('', font_size))
+                except tk.TclError:
+                    pass
             
             # 統計ラベル更新
             if hasattr(self, 'total_messages_var'):
@@ -763,8 +773,6 @@ class MainWindow:
             # チャット表示のフォント更新
             if hasattr(self, 'chat_display'):
                 self.chat_display.update_font_size(font_size)
-                
-            print(f"[DEBUG] フォントサイズ適用完了")
         except Exception as e:
             print(f"個別フォント更新エラー: {e}")
             import traceback
