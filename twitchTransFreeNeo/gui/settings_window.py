@@ -24,12 +24,8 @@ class SettingsWindow:
         self.window.geometry("700x700")
         self.window.resizable(True, True)
         
-        # ウィンドウを前面に（grab_setは使わない）
+        # シンプルに前面表示のみ
         self.window.lift()
-        self.window.attributes('-topmost', True)
-        self.window.after(100, lambda: self.window.attributes('-topmost', False))
-        
-        # transientは設定するがgrab_setは使わない（macOSでの問題回避）
         self.window.transient(self.parent)
         
         # ノートブック（タブ）作成
@@ -58,19 +54,9 @@ class SettingsWindow:
         button_frame.pack(fill='x', padx=10, pady=10)
         
         # ボタン（大きめに）
-        cancel_btn = ttk.Button(button_frame, text="キャンセル", command=self.cancel, width=10)
-        cancel_btn.pack(side='right', padx=5, ipady=5)
-        
-        apply_btn = ttk.Button(button_frame, text="適用", command=self.apply, width=10)
-        apply_btn.pack(side='right', padx=5, ipady=5)
-        
-        ok_btn = ttk.Button(button_frame, text="OK", command=self.ok, width=10)
-        ok_btn.pack(side='right', padx=5, ipady=5)
-        
-        # ボタンのフォーカス問題対策
-        for btn in [cancel_btn, apply_btn, ok_btn]:
-            btn.bind('<Enter>', lambda e, b=btn: b.focus_set())
-            btn.bind('<Leave>', lambda e: self.window.focus_set())
+        ttk.Button(button_frame, text="キャンセル", command=self.cancel, width=10).pack(side='right', padx=5, ipady=5)
+        ttk.Button(button_frame, text="適用", command=self.apply, width=10).pack(side='right', padx=5, ipady=5)
+        ttk.Button(button_frame, text="OK", command=self.ok, width=10).pack(side='right', padx=5, ipady=5)
     
     def _create_basic_tab(self, notebook):
         """基本設定タブ"""
