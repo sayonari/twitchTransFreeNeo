@@ -99,25 +99,6 @@ def download_cacert():
             return False
     return True
 
-def create_config_sample():
-    """設定ファイルのサンプルを作成"""
-    if not os.path.exists("config_sample.json"):
-        sample_config = {
-            "twitch_channel": "",
-            "trans_username": "",
-            "trans_oauth": "",
-            "translator": "google",
-            "lang_trans_to_home": "ja",
-            "lang_home_to_other": "en",
-            "tts_enabled": False,
-            "view_only_mode": False,
-            "debug": False
-        }
-        
-        import json
-        with open("config_sample.json", "w", encoding="utf-8") as f:
-            json.dump(sample_config, f, ensure_ascii=False, indent=2)
-        print("config_sample.json created.")
 
 def main(target_os):
     """メイン処理"""
@@ -126,8 +107,6 @@ def main(target_os):
     # 必要ファイルの準備
     if not download_cacert():
         return
-    
-    create_config_sample()
     
     # distフォルダの準備
     if not os.path.exists("dist"):
