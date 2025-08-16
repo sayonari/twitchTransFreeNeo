@@ -197,3 +197,5 @@ translations.db
 # Development files
 twitchTransFreeNext/
 *.pyc
+# Test files
+test_*.py
