@@ -354,32 +354,66 @@ class SettingsWindow:
         btn_frame = ttk.Frame(font_frame)
         btn_frame.pack(side='left')
         
-        def increase_font():
+        # ボタンを先に作成（関数内で参照するため）
+        up_btn = ttk.Button(btn_frame, text="▲", width=5)
+        down_btn = ttk.Button(btn_frame, text="▼", width=5)
+        
+        def increase_font(event=None):
             current = self.font_size_var.get()
             if current < 24:
                 self.font_size_var.set(current + 1)
-            # ボタンにフォーカスを戻して連続クリックを可能にする
-            up_btn.focus_set()
-            # 即座にボタンを再有効化
-            up_btn.configure(state='normal')
+            # 少し遅延を入れてから再度イベントを受け付ける
+            self.window.after(50, lambda: up_btn.configure(state='normal'))
+            return "break"  # デフォルトのイベント処理を停止
         
-        def decrease_font():
+        def decrease_font(event=None):
             current = self.font_size_var.get()
             if current > 8:
                 self.font_size_var.set(current - 1)
-            # ボタンにフォーカスを戻して連続クリックを可能にする
-            down_btn.focus_set()
-            # 即座にボタンを再有効化
-            down_btn.configure(state='normal')
+            # 少し遅延を入れてから再度イベントを受け付ける
+            self.window.after(50, lambda: down_btn.configure(state='normal'))
+            return "break"  # デフォルトのイベント処理を停止
         
-        up_btn = ttk.Button(btn_frame, text="▲", width=5, command=increase_font)
+        # コマンドを設定
+        up_btn.configure(command=increase_font)
+        down_btn.configure(command=decrease_font)
+        
+        # パック
         up_btn.pack(pady=1)
-        down_btn = ttk.Button(btn_frame, text="▼", width=5, command=decrease_font)
         down_btn.pack(pady=1)
         
-        # ボタンの連続クリックをサポートするための追加設定
-        up_btn.bind('<Button-1>', lambda e: up_btn.after(1, lambda: up_btn.configure(state='normal')))
-        down_btn.bind('<Button-1>', lambda e: down_btn.after(1, lambda: down_btn.configure(state='normal')))
+        # 押し続けた時の連続実行をサポート
+        def start_repeat_up(event):
+            increase_font()
+            up_btn._repeat_id = up_btn.after(200, lambda: repeat_up())
+        
+        def repeat_up():
+            increase_font()
+            up_btn._repeat_id = up_btn.after(50, lambda: repeat_up())
+        
+        def stop_repeat_up(event):
+            if hasattr(up_btn, '_repeat_id'):
+                up_btn.after_cancel(up_btn._repeat_id)
+                del up_btn._repeat_id
+        
+        def start_repeat_down(event):
+            decrease_font()
+            down_btn._repeat_id = down_btn.after(200, lambda: repeat_down())
+        
+        def repeat_down():
+            decrease_font()
+            down_btn._repeat_id = down_btn.after(50, lambda: repeat_down())
+        
+        def stop_repeat_down(event):
+            if hasattr(down_btn, '_repeat_id'):
+                down_btn.after_cancel(down_btn._repeat_id)
+                del down_btn._repeat_id
+        
+        # バインド
+        up_btn.bind('<ButtonPress-1>', start_repeat_up)
+        up_btn.bind('<ButtonRelease-1>', stop_repeat_up)
+        down_btn.bind('<ButtonPress-1>', start_repeat_down)
+        down_btn.bind('<ButtonRelease-1>', stop_repeat_down)
         
         # ウィンドウサイズ
         ttk.Label(frame, text="ウィンドウサイズ", font=('', 12, 'bold')).grid(row=2, column=0, columnspan=2, sticky='w', pady=(20, 10))

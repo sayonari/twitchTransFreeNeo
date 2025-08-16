@@ -17,6 +17,7 @@ class SimpleChatDisplay(ttk.Frame):
         self.messages: List[ChatMessage] = []
         self.filtered_messages: List[ChatMessage] = []
         self.max_messages = 1000
+        self.font_size = config.get("font_size", 12)  # フォントサイズを保持
         
         # フィルタリング設定
         self.search_text = ""
@@ -157,7 +158,8 @@ class SimpleChatDisplay(ttk.Frame):
         time_label = ttk.Label(
             msg_frame,
             text=message.timestamp.strftime("%H:%M:%S"),
-            foreground='gray'
+            foreground='gray',
+            font=('', self.font_size - 2)
         )
         time_label.pack(side='left', padx=(5, 10))
         
@@ -165,7 +167,7 @@ class SimpleChatDisplay(ttk.Frame):
         user_label = ttk.Label(
             msg_frame,
             text=f"{message.user}:",
-            font=('', 10, 'bold')
+            font=('', self.font_size, 'bold')
         )
         user_label.pack(side='left', padx=(0, 5))
         
@@ -174,12 +176,18 @@ class SimpleChatDisplay(ttk.Frame):
             lang_label = ttk.Label(
                 msg_frame,
                 text=f"[{message.lang}]",
-                foreground='gray'
+                foreground='gray',
+                font=('', self.font_size - 2)
             )
             lang_label.pack(side='left', padx=(0, 5))
         
         # メッセージテキスト
-        text_label = ttk.Label(msg_frame, text=message.text, wraplength=400)
+        text_label = ttk.Label(
+            msg_frame, 
+            text=message.text, 
+            wraplength=400,
+            font=('', self.font_size)
+        )
         text_label.pack(side='left', fill='x', expand=True)
         
         # 翻訳表示
@@ -236,8 +244,13 @@ class SimpleChatDisplay(ttk.Frame):
     
     def update_font_size(self, font_size: int):
         """フォントサイズを更新"""
-        # 今後の実装用（必要に応じて）
-        pass
+        try:
+            # 現在のフォントサイズを保存
+            self.font_size = font_size
+            # 表示を再構築して新しいフォントサイズを適用
+            self._update_display()
+        except Exception as e:
+            print(f"チャット表示フォント更新エラー: {e}")
 
 
 class SimpleStatusBar(ttk.Frame):
