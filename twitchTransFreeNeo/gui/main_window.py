@@ -78,11 +78,6 @@ class MainWindow:
         # ウィンドウ状態変更イベントをバインド
         self.root.bind("<Configure>", self._on_window_configure)
         
-        # macOSフォーカス処理の追加
-        if sys.platform == 'darwin':
-            self.root.bind("<FocusIn>", self._on_focus_in)
-            self.root.bind("<Button-1>", self._on_click)
-        
         # 終了処理
         self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
     
@@ -149,10 +144,7 @@ class MainWindow:
         
         # ペイン幅の復元と保存設定
         self.root.after(100, self._restore_pane_position)
-        # 複数のイベントにバインドして安定性を向上
         self.paned_window.bind('<ButtonRelease-1>', self._save_pane_position)
-        self.paned_window.bind('<Button1-Motion>', self._on_pane_drag)
-        self.paned_window.bind('<B1-Motion>', self._on_pane_drag)
     
     def _create_simple_info_panel(self, parent):
         """シンプルな情報パネル作成"""
@@ -199,14 +191,14 @@ class MainWindow:
         toolbar.pack(fill='x', padx=5, pady=5)
         
         # 接続ボタン
-        self.connect_button = ttk.Button(toolbar, text="接続開始", command=self._toggle_connection, takefocus=True)
+        self.connect_button = ttk.Button(toolbar, text="接続開始", command=self._toggle_connection)
         self.connect_button.pack(side='left', padx=2)
         
         # 設定ボタン
-        ttk.Button(toolbar, text="設定", command=self._open_settings, takefocus=True).pack(side='left', padx=2)
+        ttk.Button(toolbar, text="設定", command=self._open_settings).pack(side='left', padx=2)
         
         # 診断ボタン
-        ttk.Button(toolbar, text="診断", command=self._open_diagnostics, takefocus=True).pack(side='left', padx=2)
+        ttk.Button(toolbar, text="診断", command=self._open_diagnostics).pack(side='left', padx=2)
         
         # セパレータ
         ttk.Separator(toolbar, orient='vertical').pack(side='left', fill='y', padx=5)
@@ -227,8 +219,8 @@ class MainWindow:
         right_menu = ttk.Frame(toolbar)
         right_menu.pack(side='right')
         
-        ttk.Button(right_menu, text="履歴クリア", command=self._clear_chat, takefocus=True).pack(side='right', padx=2)
-        ttk.Button(right_menu, text="ヘルプ", command=self._show_help, takefocus=True).pack(side='right', padx=2)
+        ttk.Button(right_menu, text="履歴クリア", command=self._clear_chat).pack(side='right', padx=2)
+        ttk.Button(right_menu, text="ヘルプ", command=self._show_help).pack(side='right', padx=2)
     
     def _create_simple_info_panel(self, parent):
         """簡易情報パネル作成"""
@@ -402,32 +394,10 @@ class MainWindow:
     
     def _toggle_connection(self):
         """接続切り替え"""
-        # ボタンを一時的に無効化（連続クリック防止）
-        self.connect_button.configure(state='disabled')
-        
-        # 非同期で接続処理を実行（UIをブロックしない）
         if self.is_connected:
-            # 切断処理を別スレッドで実行
-            self.root.after(10, self._disconnect_async)
-        else:
-            # 接続処理を別スレッドで実行
-            self.root.after(10, self._connect_async)
-    
-    def _connect_async(self):
-        """非同期接続処理のラッパー"""
-        try:
-            self._connect()
-        finally:
-            # 1秒後にボタンを再有効化
-            self.root.after(1000, lambda: self.connect_button.configure(state='normal'))
-    
-    def _disconnect_async(self):
-        """非同期切断処理のラッパー"""
-        try:
             self._disconnect()
-        finally:
-            # 1秒後にボタンを再有効化
-            self.root.after(1000, lambda: self.connect_button.configure(state='normal'))
+        else:
+            self._connect()
     
     def _connect(self):
         """接続開始"""
@@ -528,21 +498,15 @@ class MainWindow:
     
     def _open_settings(self):
         """設定画面を開く"""
-        # すぐにUIを更新してレスポンシブに
-        self.root.update_idletasks()
-        
-        try:
-            if hasattr(self, 'settings_window') and self.settings_window and self.settings_window.window.winfo_exists():
+        # 既存の設定ウィンドウがあればフォーカス
+        if self.settings_window:
+            try:
                 self.settings_window.window.lift()
                 return
-        except:
-            pass
+            except:
+                self.settings_window = None
         
-        # 設定ウィンドウを非同期で開く
-        self.root.after(10, self._create_settings_window)
-    
-    def _create_settings_window(self):
-        """設定ウィンドウを作成"""
+        # 新しい設定ウィンドウを作成
         self.settings_window = SimpleSettingsWindow(
             self.root, 
             self.config_manager.get_all(), 
@@ -559,19 +523,11 @@ class MainWindow:
         # 接続中なら一度切断して再接続（新しい設定を反映させるため）
         if self.chat_monitor and self.is_connected:
             self._log_message("設定変更のため、Twitchとの接続を再起動します...")
-            
-            # 現在の接続を停止
             self._disconnect()
-            
-            # 少し待機（接続の確実な終了を待つ）
-            self.root.after(1000, self._restart_connection_with_new_config, new_config)
+            # 少し待ってから再接続
+            threading.Timer(0.5, self._connect).start()
         else:
             self._log_message("設定が更新されました")
-    
-    def _restart_connection_with_new_config(self, new_config: Dict[str, Any]):
-        """新しい設定でTwitch接続を再開"""
-        self._log_message("新しい設定でTwitchに再接続します...")
-        self._connect()
     
     def _clear_chat(self):
         """チャットクリア"""
@@ -655,39 +611,20 @@ class MainWindow:
         except Exception as e:
             print(f"ペイン位置復元エラー: {e}")
     
-    def _on_pane_drag(self, event=None):
-        """ペインドラッグ中の処理"""
-        # ドラッグ中は頻繁に保存しない（パフォーマンス向上）
-        pass
-    
     def _save_pane_position(self, event=None):
         """ペイン位置を保存"""
         try:
             position = self.paned_window.sashpos(0)
             if position > 200:  # 最小幅チェック
                 self.config_manager.set("pane_position", position)
-                # 遅延保存でパフォーマンス向上
-                if hasattr(self, '_save_timer'):
-                    self.root.after_cancel(self._save_timer)
-                self._save_timer = self.root.after(500, self._delayed_save)
-        except Exception as e:
-            print(f"ペイン位置保存エラー: {e}")
-    
-    def _delayed_save(self):
-        """遅延保存"""
-        try:
-            self.config_manager.save_config()
+                self.config_manager.save_config()
         except:
             pass
     
     def _on_window_configure(self, event=None):
         """ウィンドウ設定変更時のコールバック"""
-        # ウィンドウのリサイズや移動が頻繁に発生するため、
-        # 遅延保存を使用してパフォーマンスを向上
-        if hasattr(self, '_geometry_save_timer'):
-            self.root.after_cancel(self._geometry_save_timer)
-        # 500ms後に保存（連続的な変更が終わってから保存）
-        self._geometry_save_timer = self.root.after(500, self._save_window_geometry)
+        if event and event.widget == self.root:
+            self._save_window_geometry()
     
     def _save_window_geometry(self):
         """ウィンドウの位置とサイズを保存"""
@@ -775,16 +712,6 @@ class MainWindow:
         # ウィンドウ終了
         self.root.destroy()
     
-    def _on_focus_in(self, event):
-        """フォーカスイン時の処理（macOS用）"""
-        # ウィンドウ全体を更新してボタンを再描画
-        self.root.update_idletasks()
-    
-    def _on_click(self, event):
-        """クリック時の処理（macOS用）"""
-        # フォーカスを明示的にウィンドウに設定
-        self.root.focus_force()
-        self.root.update_idletasks()
     
     def run(self):
         """アプリケーション実行"""

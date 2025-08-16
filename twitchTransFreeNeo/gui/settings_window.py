@@ -442,7 +442,6 @@ class SettingsWindow:
         self.config = new_config
         self.on_config_change(new_config)
         self.window.destroy()
-        messagebox.showinfo("設定", "設定を適用しました。\n\nTwitchに接続中の場合は、新しい設定を反映するため自動的に再接続されます。")
     
     def cancel(self):
         """キャンセル"""
