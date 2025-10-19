@@ -42,7 +42,7 @@ def build_macos(arch=None):
         output_name += f"_{arch}"
 
     cmd = [
-        "python", "-m", "nuitka",
+        sys.executable, "-m", "nuitka",
         "--standalone",
         "--macos-create-app-bundle",
         f"--macos-app-name=twitchTransFreeNeo",
@@ -80,7 +80,7 @@ def build_windows():
     output_name = f"twitchTransFreeNeo_{version}_windows"
 
     cmd = [
-        "python", "-m", "nuitka",
+        sys.executable, "-m", "nuitka",
         "--standalone",
         "--windows-console-mode=disable",
         f"--output-filename=twitchTransFreeNeo.exe",
@@ -111,7 +111,7 @@ def build_linux():
     output_name = f"twitchTransFreeNeo_{version}_linux"
 
     cmd = [
-        "python", "-m", "nuitka",
+        sys.executable, "-m", "nuitka",
         "--standalone",
         f"--output-filename=twitchTransFreeNeo",
         "--output-dir=dist",
