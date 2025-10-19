@@ -263,7 +263,7 @@ class MainWindow:
             config = self.config_manager.get_all()
             self.chat_monitor = ChatMonitor(config, self._on_message_received)
 
-            success = await self.chat_monitor.start()
+            success, error_msg = await self.chat_monitor.start()
             if success:
                 self.is_connected = True
                 channel = self.config_manager.get("twitch_channel")
@@ -276,7 +276,8 @@ class MainWindow:
                 self._log_message(f"チャンネル '{channel}' に接続しました")
                 self.page.update()
             else:
-                await self._show_error_dialog("接続エラー", "Twitchチャンネルへの接続に失敗しました")
+                # 詳細なエラーメッセージを表示
+                await self._show_error_dialog("接続エラー", error_msg if error_msg else "Twitchチャンネルへの接続に失敗しました")
 
         except Exception as e:
             await self._show_error_dialog("接続エラー", f"接続中にエラーが発生しました: {e}")
@@ -526,32 +527,33 @@ class MainWindow:
 - 統計情報表示
 """
 
+        def close_help_dialog(e):
+            self.page.close(dialog)
+            self.page.update()
+
         dialog = ft.AlertDialog(
             modal=True,
             title=ft.Text("ヘルプ"),
             content=ft.Text(help_text),
-            actions=[ft.TextButton("閉じる", on_click=lambda e: self._close_dialog())],
+            actions=[ft.TextButton("閉じる", on_click=close_help_dialog)],
         )
         self.page.open(dialog)
+        self.page.update()
 
     async def _show_error_dialog(self, title: str, message: str):
         """エラーダイアログ表示"""
+        def close_dialog(e):
+            self.page.close(dialog)
+            self.page.update()
+
         dialog = ft.AlertDialog(
             modal=True,
             title=ft.Text(title),
             content=ft.Text(message),
-            actions=[ft.TextButton("OK", on_click=lambda e: self._close_dialog())],
+            actions=[ft.TextButton("OK", on_click=close_dialog)],
         )
         self.page.open(dialog)
-
-    def _close_dialog(self):
-        """ダイアログを閉じる"""
-        if self.page.overlay:
-            # 最後に開いたダイアログを閉じる
-            for control in self.page.overlay:
-                if isinstance(control, ft.AlertDialog):
-                    self.page.close(control)
-                    break
+        self.page.update()
 
     def _on_closing(self, e):
         """ウィンドウ終了時"""

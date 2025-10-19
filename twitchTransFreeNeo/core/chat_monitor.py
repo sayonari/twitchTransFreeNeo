@@ -541,38 +541,64 @@ class ChatMonitor:
         self.bot: Optional[TwitchChatBot] = None
         self.is_running = False
     
-    async def start(self) -> bool:
-        """監視開始"""
+    async def start(self) -> tuple[bool, str]:
+        """監視開始
+
+        Returns:
+            tuple[bool, str]: (成功フラグ, エラーメッセージ)
+        """
         try:
             # print("[DEBUG] ChatMonitor.start() 開始")
             # print(f"[DEBUG] TWITCHIO_AVAILABLE: {TWITCHIO_AVAILABLE}")
-            
+
             if not TWITCHIO_AVAILABLE:
-                print("TwitchIOが利用できません。Twitch接続機能は無効です。")
-                return False
-            
+                error_msg = "TwitchIOが利用できません。Twitch接続機能は無効です。"
+                print(error_msg)
+                return False, error_msg
+
             # チャンネル名を表示
             print(f"Twitchチャンネル: {self.config.get('twitch_channel')}")
             print(f"表示のみモード: {self.config.get('view_only_mode')}")
-            
-            self.bot = TwitchChatBot(self.config, self.message_callback)
-            
+
             # 設定検証
             if not self.config.get("twitch_channel"):
-                return False
-            
+                return False, "Twitchチャンネル名が設定されていません"
+
             # 表示のみモードでない場合はOAuthトークンも必要
             if not self.config.get("view_only_mode", False) and not self.config.get("trans_oauth"):
-                return False
-            
-            # 非同期でボット起動
-            asyncio.create_task(self.bot.start())
-            self.is_running = True
-            return True
-            
+                return False, "OAuthトークンが設定されていません。設定画面で入力してください。"
+
+            self.bot = TwitchChatBot(self.config, self.message_callback)
+
+            # 非同期でボット起動（エラーハンドリング付き）
+            async def start_bot_with_error_handling():
+                try:
+                    await self.bot.start()
+                except Exception as e:
+                    error_msg = f"Twitchボット起動エラー: {e}"
+                    print(error_msg)
+                    import traceback
+                    traceback.print_exc()
+                    self.is_running = False
+
+            asyncio.create_task(start_bot_with_error_handling())
+
+            # 少し待ってから接続確認
+            await asyncio.sleep(0.5)
+
+            # ボットが正常に起動したか確認
+            if self.bot and hasattr(self.bot, '_connection') and self.bot._connection:
+                self.is_running = True
+                return True, ""
+            else:
+                return False, "TwitchIRCへの接続に失敗しました。OAuthトークンとチャンネル名を確認してください。"
+
         except Exception as e:
-            print(f"チャット監視開始エラー: {e}")
-            return False
+            error_msg = f"チャット監視開始エラー: {e}"
+            print(error_msg)
+            import traceback
+            traceback.print_exc()
+            return False, error_msg
     
     def stop(self):
         """監視停止"""
