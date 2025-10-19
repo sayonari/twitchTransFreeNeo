@@ -1,0 +1,86 @@
+name: Build twitchTransFreeNeo with Nuitka
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build_matrix:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            target: macos_arm64
+            artifact: twitchTransFreeNeo_macos_arm64
+          - os: macos-13
+            target: macos_x86_64
+            artifact: twitchTransFreeNeo_macos_x86_64
+          - os: windows-latest
+            target: windows
+            artifact: twitchTransFreeNeo_windows
+          - os: ubuntu-latest
+            target: linux
+            artifact: twitchTransFreeNeo_linux
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Get Version
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(grep "__version__" twitchTransFreeNeo/__init__.py | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version detected: $VERSION"
+
+      - name: Build with Nuitka
+        run: uv run python build_nuitka.py ${{ matrix.target }}
+
+      - name: Create Archive (macOS/Linux)
+        if: runner.os != 'Windows'
+        run: |
+          cd dist
+          tar -czvf ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz run.dist/
+          echo "Created archive: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz"
+          ls -lh
+
+      - name: Create Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          cd dist
+          Compress-Archive -Path run.dist/* -DestinationPath ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip
+          echo "Created archive: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip"
+          Get-ChildItem
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: false
+          prerelease: true
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+          fail_on_unmatched_files: false

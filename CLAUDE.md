@@ -1,34 +1,49 @@
 # CLAUDE.md - プロジェクト固有の指示
 
-## 重要：毎回必ずコンテキストに含めること
-**デバッグ手順.mdを毎回必ずコンテキストに含めてください！**
-このファイルには現在のデバッグ状況、問題点、対策、ワークフローが記載されています。
-
 ## プロジェクト概要
 twitchTransFreeNeo - Twitchチャット翻訳ツール（GUI版）
-- Python/tkinter製のデスクトップアプリケーション
-- macOS/Windows対応
-- PyInstallerでバイナリビルド
+- Python/Flet製のデスクトップアプリケーション（Flutter/Dartベース）
+- macOS/Windows/Linux対応
+- Nuitkaでバイナリビルド
+- uvでパッケージ管理
+
+## 技術スタック（2025年最新）
+- **GUI**: Flet（Flutter/Dartベース、Material Design）
+- **バイナリ化**: Nuitka（高速起動、ソースコード保護）
+- **パッケージ管理**: uv（高速、Rustベース）
+- **翻訳エンジン**: deep-translator（Google翻訳、DeepL対応）
+- **非同期処理**: asyncio, aiohttp
 
 ## 開発ルール
-1. **バイナリビルドはGitHub Actionsで実行**（ローカルでbuild_mac.shを実行しない）
+1. **バイナリビルドはGitHub Actionsで実行**（ローカルビルドは不要）
 2. **デバッグ中はバージョン番号を変更しない**
 3. **コミット後は必ずgit pushしてGitHub Actionsでビルド**
-4. **macOS固有の問題に注意**（特にtkinter関連）
+4. **tkinterの問題から解放**（Fletを使用しているため）
 
 ## ファイル構成
 - run.py: エントリーポイント
+- build_nuitka.py: Nuitkaビルドスクリプト
+- pyproject.toml: プロジェクト設定（uv管理）
 - twitchTransFreeNeo/: メインパッケージ
-  - gui/: GUI関連
-    - main_window.py: メインウィンドウ
-    - settings_window.py: 設定画面
-    - chat_display.py: チャット表示
+  - gui/: GUI関連（Flet）
+    - main_window_flet.py: メインウィンドウ（Flet版）
+    - settings_dialog.py: 設定ダイアログ（Flet版）
+    - ※ 旧tkinter版（main_window.py等）は保持されていますが非推奨
   - core/: コア機能
     - chat_monitor.py: チャット監視
-    - translator.py: 翻訳エンジン
+    - translator.py: 翻訳エンジン（deep-translator使用）
     - tts.py: 音声合成
   - utils/: ユーティリティ
     - config_manager.py: 設定管理
 
-## 現在の状況
-デバッグ手順.mdを参照してください。
+## 開発ワークフロー
+1. **パッケージ追加**: `uv add <パッケージ名>`
+2. **依存関係同期**: `uv sync`
+3. **ローカル実行**: `uv run python run.py`
+4. **ローカルビルド（テスト用）**: `uv run python build_nuitka.py`
+5. **本番ビルド**: GitHub Actionsで自動実行（タグpush時）
+
+## 既知の改善点
+- Fletへの移行により、macOS固有のtkinter問題から解放
+- deep-translatorによる最新のGoogle翻訳API対応
+- Nuitkaによる高速起動（2-3倍高速化）

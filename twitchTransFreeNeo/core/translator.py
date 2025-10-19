@@ -4,7 +4,7 @@
 import asyncio
 import aiohttp
 from typing import Optional, Dict, Any
-from async_google_trans_new import AsyncTranslator, constant
+from deep_translator import GoogleTranslator
 import deepl
 
 class TranslationEngine:
@@ -19,13 +19,10 @@ class TranslationEngine:
     def _init_translators(self):
         """翻訳エンジンを初期化"""
         try:
-            # Google Translator
-            suffix = self.config.get("google_translate_suffix", "co.jp")
-            if suffix not in [url.split('.')[-1] for url in constant.DEFAULT_SERVICE_URLS]:
-                suffix = "co.jp"
-            self.google_translator = AsyncTranslator(url_suffix=suffix)
-            print(f"Google翻訳エンジンを初期化しました (suffix: {suffix})")
-            
+            # Google Translator (deep-translatorはインスタンスを保持せず、毎回作成する)
+            self.google_translator = True  # 初期化成功フラグ
+            print("Google翻訳エンジンを初期化しました")
+
             # DeepL Translator (API キーがある場合のみ)
             deepl_api_key = self.config.get("deepl_api_key", "")
             if deepl_api_key:
@@ -37,34 +34,43 @@ class TranslationEngine:
             self.deepl_translator = None
     
     async def detect_language(self, text: str) -> Optional[str]:
-        """言語検出"""
+        """言語検出 (deep-translatorを使用)"""
         try:
+            from deep_translator import single_detection
+
             # Google翻訳エンジンが初期化されていない場合は再初期化
             if not self.google_translator:
                 self._init_translators()
-            
+
             if not self.google_translator:
                 print("言語検出エラー: Google翻訳エンジンが初期化できません")
                 return None
-                
-            if self.config.get("translator") == "deepl" and self.deepl_translator:
-                # DeepLの場合はGoogleで検出
-                if hasattr(self.google_translator, 'detect'):
-                    detected = await self.google_translator.detect(text)
-                    return detected[0] if detected else None
-                else:
-                    print("言語検出エラー: Google翻訳エンジンにdetectメソッドがありません")
-                    return None
-            else:
-                if hasattr(self.google_translator, 'detect'):
-                    detected = await self.google_translator.detect(text)
-                    return detected[0] if detected else None
-                else:
-                    print("言語検出エラー: Google翻訳エンジンにdetectメソッドがありません")
-                    return None
+
+            # deep-translatorのsingle_detection機能を使用
+            detected = await asyncio.to_thread(single_detection, text, api_key=None)
+
+            if self.config.get("debug", False):
+                print(f"言語検出結果: {text[:30]}... → {detected}")
+
+            return detected if detected else None
         except Exception as e:
             print(f"言語検出エラー: {e}")
-            return None
+            # フォールバック: 簡易的な言語推定
+            try:
+                # 日本語文字が含まれているかチェック
+                if any('\u3040' <= char <= '\u309f' or '\u30a0' <= char <= '\u30ff' or '\u4e00' <= char <= '\u9fff' for char in text):
+                    return 'ja'
+                # 韓国語文字チェック
+                elif any('\uac00' <= char <= '\ud7af' for char in text):
+                    return 'ko'
+                # 中国語文字チェック（簡体字）
+                elif any('\u4e00' <= char <= '\u9fff' for char in text):
+                    return 'zh-CN'
+                # デフォルトは英語
+                else:
+                    return 'en'
+            except:
+                return None
     
     async def translate_text(self, text: str, target_lang: str, source_lang: str = "auto") -> Optional[str]:
         """テキスト翻訳"""
@@ -89,28 +95,33 @@ class TranslationEngine:
             return None
     
     async def _translate_with_google(self, text: str, target_lang: str) -> Optional[str]:
-        """Google翻訳"""
+        """Google翻訳 (deep-translatorを使用)"""
         try:
             if not self.google_translator:
                 self._init_translators()
-                
+
             if not self.google_translator:
                 print("Google翻訳エラー: 翻訳エンジンが初期化できません")
                 return None
-            
-            # デバッグ: 翻訳サーバーURLを表示
+
+            # デバッグ情報
             if self.config.get("debug", False):
-                suffix = self.config.get("google_translate_suffix", "co.jp")
-                print(f"Google翻訳: translate.google.{suffix} を使用して翻訳中...")
-                
-            result = await self.google_translator.translate(text, target_lang)
-            
+                print(f"Google翻訳: {text[:30]}... → {target_lang} に翻訳中...")
+
+            # deep-translatorのGoogleTranslatorを使用
+            translator = GoogleTranslator(source='auto', target=target_lang)
+            result = await asyncio.to_thread(translator.translate, text)
+
             if self.config.get("debug", False):
                 print(f"Google翻訳結果: {text[:30]}... → {result[:30] if result else 'None'}...")
-                
+
             return result
         except Exception as e:
             print(f"Google翻訳エラー: {e}")
+            # より詳細なエラー情報
+            if self.config.get("debug", False):
+                import traceback
+                traceback.print_exc()
             return None
     
     async def _translate_with_deepl(self, text: str, target_lang: str, source_lang: str) -> Optional[str]:

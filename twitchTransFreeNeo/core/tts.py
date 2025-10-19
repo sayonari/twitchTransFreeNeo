@@ -14,15 +14,7 @@ from typing import Dict, Any, Optional
 # Check if we're on macOS
 is_macos = platform.system() == 'Darwin'
 
-# Import playsound with appropriate handling for macOS
-try:
-    from playsound import playsound
-    playsound_available = True
-except ImportError as e:
-    playsound_available = False
-    import_error = e
-
-# Try to import pygame as alternative
+# Try to import pygame
 try:
     import pygame
     pygame_available = True
@@ -34,21 +26,7 @@ if is_macos:
     try:
         import AppKit
     except ImportError:
-        # If we're in a PyInstaller bundle on macOS
-        if getattr(sys, 'frozen', False):
-            # Try to use afplay command line tool instead
-            def playsound(sound_file, block=True):
-                if not os.path.exists(sound_file):
-                    print(f"Sound file not found: {sound_file}")
-                    return
-                
-                cmd = f"afplay {sound_file}"
-                if block:
-                    os.system(cmd)
-                else:
-                    threading.Thread(target=os.system, args=(cmd,)).start()
-            
-            playsound_available = True
+        pass
 
 class TTSEngine:
     """
@@ -250,22 +228,7 @@ class TTSEngine:
                     except:
                         pass
             
-            # Method 2: playsound (macOS以外で試行)
-            if playsound_available and not play_success and not is_macos:
-                try:
-                    if self.config.get("debug", False):
-                        print(f"TTS: Attempting playsound: {tts_file}")
-                    playsound(tts_file, True)
-                    if self.config.get("debug", False):
-                        print("TTS: Playsound completed successfully")
-                    play_success = True
-                except Exception as play_error:
-                    print(f'TTS playsound error: {play_error}')
-                    if self.config.get("debug", False):
-                        import traceback
-                        traceback.print_exc()
-            
-            # Method 3: Other system-specific commands
+            # Method 2: Other system-specific commands
             if not play_success:
                 try:
                     if platform.system() == 'Windows':
@@ -304,9 +267,7 @@ class TTSEngine:
             if not play_success:
                 print('TTS error: All playback methods failed')
                 if not pygame_available:
-                    print("TTS info: pygame not available (recommended: pip install pygame)")
-                if not playsound_available and not is_macos:
-                    print(f"TTS info: playsound not available - {import_error}")
+                    print("TTS info: pygame not available (recommended: uv add pygame)")
             
         except Exception as synthesis_error:
             print(f'TTS synthesis error: {synthesis_error}')

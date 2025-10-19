@@ -39,7 +39,7 @@ sys.path.insert(0, base_path)
 #     sys.stdout = sys.stderr = open(os.devnull, 'w')
 
 # メインアプリケーションを起動
-from twitchTransFreeNeo.gui.main_window import MainWindow
+from twitchTransFreeNeo.gui.main_window_flet import MainWindow
 
 if __name__ == "__main__":
     app = MainWindow()

@@ -1,0 +1,39 @@
+[project]
+name = "twitchTransFreeNeo"
+version = "0.2.0-beta"
+description = "Next Generation Twitch Chat Translator - GUI版Twitchチャット翻訳ツール（Flet版）"
+authors = [
+    {name = "sayonari"}
+]
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "aiohttp>=3.9.0",
+    "twitchio>=2.3.0",
+    "deep-translator>=1.11.0",
+    "emoji>=2.2.0",
+    "aiosqlite>=0.17.0",
+    "deepl-translate>=1.2.0",
+    "gTTS>=2.3.0",
+    "pygame>=2.0.0",
+    "pyautogui>=0.9.54",
+    "Pillow>=9.0.0",
+    "flet[all]>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "nuitka>=2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "nuitka>=2.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["twitchTransFreeNeo"]
