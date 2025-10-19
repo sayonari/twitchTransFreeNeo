@@ -60,34 +60,40 @@ jobs:
           PYTHONIOENCODING: utf-8
         run: uv run python build_nuitka.py ${{ matrix.target }}
 
-      - name: Create Archive (macOS/Linux)
-        if: runner.os != 'Windows'
+      - name: Create Archive (macOS)
+        if: runner.os == 'macOS'
         run: |
-          cd dist/run.dist
-          # 実行ファイルだけをアーカイブに含める
-          if [ -f "twitchTransFreeNeo" ]; then
-            # macOS/Linuxバイナリ
-            tar -czvf ../${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz twitchTransFreeNeo
-          elif [ -d "twitchTransFreeNeo.app" ]; then
-            # macOS .appバンドル
-            tar -czvf ../${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz twitchTransFreeNeo.app
+          cd dist
+          # macOS .appバンドルをzipで圧縮
+          if [ -d "run.app" ]; then
+            zip -r -q ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip run.app
+            echo "Created archive: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip"
+            ls -lh *.zip
           fi
-          cd ..
-          echo "Created archive: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz"
-          ls -lh
+
+      - name: Create Archive (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd dist
+          # Linuxバイナリをtar.gzで圧縮
+          if [ -d "run.dist" ] && [ -f "run.dist/twitchTransFreeNeo" ]; then
+            tar -czvf ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz -C run.dist twitchTransFreeNeo
+            echo "Created archive: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz"
+            ls -lh *.tar.gz
+          fi
 
       - name: Create Archive (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          cd dist/run.dist
-          # 実行ファイルだけをアーカイブに含める
+          cd dist
+          # Windows単体.exeをそのまま使用（zipは不要）
           if (Test-Path "twitchTransFreeNeo.exe") {
-            Compress-Archive -Path twitchTransFreeNeo.exe -DestinationPath ../${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip
+            # .exeをリネーム
+            Move-Item -Path twitchTransFreeNeo.exe -Destination ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.exe
+            echo "Created executable: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.exe"
+            Get-ChildItem *.exe
           }
-          cd ..
-          echo "Created archive: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip"
-          Get-ChildItem
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
@@ -98,4 +104,5 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.zip
+            dist/*.exe
           fail_on_unmatched_files: false

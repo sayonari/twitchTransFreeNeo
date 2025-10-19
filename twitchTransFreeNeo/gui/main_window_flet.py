@@ -49,7 +49,10 @@ class MainWindow:
 
         # 自動接続チェック
         if self.config_manager.get("auto_start", False):
-            asyncio.create_task(self._auto_connect())
+            self.page.run_task(self._auto_connect)
+
+        # UIを更新
+        self.page.update()
 
     def _setup_window(self):
         """ウィンドウ設定"""
@@ -104,33 +107,33 @@ class MainWindow:
 
         self.connect_button = ft.ElevatedButton(
             "接続開始",
-            icon=ft.icons.PLAY_ARROW,
+            icon=ft.Icons.PLAY_ARROW,
             on_click=self._toggle_connection,
         )
 
         self.channel_text = ft.Text(
             channel if channel else "未設定",
-            color=ft.colors.GREEN if channel else ft.colors.RED,
+            color=ft.Colors.GREEN if channel else ft.Colors.RED,
         )
 
         self.bot_text = ft.Text(
             bot_user if bot_user else "未設定",
-            color=ft.colors.GREEN if bot_user else ft.colors.RED,
+            color=ft.Colors.GREEN if bot_user else ft.Colors.RED,
         )
 
         return ft.Container(
             content=ft.Row([
                 self.connect_button,
-                ft.ElevatedButton("設定", icon=ft.icons.SETTINGS, on_click=self._open_settings),
-                ft.ElevatedButton("診断", icon=ft.icons.TROUBLESHOOT, on_click=self._open_diagnostics),
+                ft.ElevatedButton("設定", icon=ft.Icons.SETTINGS, on_click=self._open_settings),
+                ft.ElevatedButton("診断", icon=ft.Icons.TROUBLESHOOT, on_click=self._open_diagnostics),
                 ft.VerticalDivider(),
                 ft.Text("チャンネル:"),
                 self.channel_text,
                 ft.Text("翻訳bot:"),
                 self.bot_text,
                 ft.Container(expand=True),  # スペーサー
-                ft.ElevatedButton("履歴クリア", icon=ft.icons.CLEAR_ALL, on_click=self._clear_chat),
-                ft.ElevatedButton("ヘルプ", icon=ft.icons.HELP, on_click=self._show_help),
+                ft.ElevatedButton("履歴クリア", icon=ft.Icons.CLEAR_ALL, on_click=self._clear_chat),
+                ft.ElevatedButton("ヘルプ", icon=ft.Icons.HELP, on_click=self._show_help),
             ], spacing=10),
             padding=10,
         )
@@ -148,12 +151,12 @@ class MainWindow:
             label="言語フィルタ",
             width=150,
             options=[
-                ft.dropdown.Option("all", "すべて"),
-                ft.dropdown.Option("ja", "日本語"),
-                ft.dropdown.Option("en", "英語"),
-                ft.dropdown.Option("ko", "韓国語"),
-                ft.dropdown.Option("zh", "中国語"),
-                ft.dropdown.Option("other", "その他"),
+                ft.DropdownOption("all", "すべて"),
+                ft.DropdownOption("ja", "日本語"),
+                ft.DropdownOption("en", "英語"),
+                ft.DropdownOption("ko", "韓国語"),
+                ft.DropdownOption("zh", "中国語"),
+                ft.DropdownOption("other", "その他"),
             ],
             value="all",
             on_change=self._apply_filters,
@@ -205,7 +208,7 @@ class MainWindow:
                         self.log_text,
                     ], scroll=ft.ScrollMode.AUTO),
                     expand=True,
-                    border=ft.border.all(1, ft.colors.OUTLINE),
+                    border=ft.border.all(1, ft.Colors.GREY_400),
                     border_radius=5,
                     padding=10,
                 ),
@@ -221,11 +224,11 @@ class MainWindow:
 
         return ft.Container(
             content=ft.Row([
-                ft.Icon(ft.icons.CIRCLE, size=12, color=ft.colors.RED),
+                ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.RED),
                 self.status_text,
             ], spacing=5),
             padding=ft.padding.symmetric(horizontal=10, vertical=5),
-            bgcolor=ft.colors.SURFACE_VARIANT,
+            bgcolor=ft.Colors.GREY_200,
         )
 
     async def _auto_connect(self):
@@ -240,10 +243,12 @@ class MainWindow:
 
     def _toggle_connection(self, e):
         """接続切り替え"""
+        self._log_message("接続ボタンが押されました")
+        print("DEBUG: _toggle_connection called")
         if self.is_connected:
-            asyncio.create_task(self._disconnect())
+            self.page.run_task(self._disconnect)
         else:
-            asyncio.create_task(self._connect())
+            self.page.run_task(self._connect)
 
     async def _connect(self):
         """接続開始"""
@@ -265,9 +270,9 @@ class MainWindow:
 
                 # UI更新
                 self.connect_button.text = "接続停止"
-                self.connect_button.icon = ft.icons.STOP
+                self.connect_button.icon = ft.Icons.STOP
                 self.status_text.value = f"接続中: {channel}"
-                self.status_text.color = ft.colors.GREEN
+                self.status_text.color = ft.Colors.GREEN
                 self._log_message(f"チャンネル '{channel}' に接続しました")
                 self.page.update()
             else:
@@ -284,9 +289,9 @@ class MainWindow:
 
             self.is_connected = False
             self.connect_button.text = "接続開始"
-            self.connect_button.icon = ft.icons.PLAY_ARROW
+            self.connect_button.icon = ft.Icons.PLAY_ARROW
             self.status_text.value = "未接続"
-            self.status_text.color = ft.colors.RED
+            self.status_text.color = ft.Colors.RED
             self._log_message("接続を停止しました")
             self.page.update()
 
@@ -352,7 +357,7 @@ class MainWindow:
                 ft.Text(
                     message.timestamp.strftime("%H:%M:%S"),
                     size=10,
-                    color=ft.colors.GREY,
+                    color=ft.Colors.GREY,
                 ),
                 ft.Text(
                     f"{message.user}:",
@@ -361,7 +366,7 @@ class MainWindow:
                 ft.Text(
                     f"[{message.lang}]" if message.lang else "",
                     size=10,
-                    color=ft.colors.GREY,
+                    color=ft.Colors.GREY,
                 ),
             ], spacing=5),
             ft.Text(message.text),
@@ -371,15 +376,15 @@ class MainWindow:
         if message.translation:
             content.controls.append(
                 ft.Row([
-                    ft.Icon(ft.icons.TRANSLATE, size=16, color=ft.colors.BLUE),
-                    ft.Text(message.translation, color=ft.colors.BLUE_700),
+                    ft.Icon(ft.Icons.TRANSLATE, size=16, color=ft.Colors.BLUE),
+                    ft.Text(message.translation, color=ft.Colors.BLUE_700),
                 ], spacing=5)
             )
 
         return ft.Container(
             content=content,
             padding=10,
-            border=ft.border.all(1, ft.colors.OUTLINE),
+            border=ft.border.all(1, ft.Colors.GREY_400),
             border_radius=5,
         )
 
@@ -394,6 +399,8 @@ class MainWindow:
 
     def _clear_chat(self, e):
         """チャットクリア"""
+        self._log_message("履歴クリアボタンが押されました")
+        print("DEBUG: _clear_chat called")
         self.messages.clear()
         self.filtered_messages.clear()
         self.chat_list.controls.clear()
@@ -414,9 +421,20 @@ class MainWindow:
 
     def _open_settings(self, e):
         """設定画面を開く"""
-        config = self.config_manager.get_all()
-        settings_dialog = SettingsDialog(self.page, config, self._on_config_changed)
-        settings_dialog.show()
+        self._log_message("設定ボタンが押されました")
+        print("DEBUG: _open_settings called")
+        try:
+            config = self.config_manager.get_all()
+            print(f"DEBUG: config loaded: {len(config)} items")
+            settings_dialog = SettingsDialog(self.page, config, self._on_config_changed)
+            print("DEBUG: SettingsDialog created")
+            settings_dialog.show()
+            print("DEBUG: SettingsDialog.show() called")
+        except Exception as ex:
+            print(f"ERROR in _open_settings: {ex}")
+            import traceback
+            traceback.print_exc()
+            self._log_message(f"設定ダイアログエラー: {ex}")
 
     def _on_config_changed(self, new_config: Dict[str, Any]):
         """設定変更時のコールバック"""
@@ -433,7 +451,7 @@ class MainWindow:
             # 接続中なら一度切断して再接続（新しい設定を反映させるため）
             if self.is_connected:
                 self._log_message("設定変更のため、Twitchとの接続を再起動します...")
-                asyncio.create_task(self._restart_connection())
+                self.page.run_task(self._restart_connection)
 
         except Exception as e:
             self._log_message(f"設定変更エラー: {e}")
@@ -453,21 +471,23 @@ class MainWindow:
 
         if self.channel_text:
             self.channel_text.value = channel if channel else "未設定"
-            self.channel_text.color = ft.colors.GREEN if channel else ft.colors.RED
+            self.channel_text.color = ft.Colors.GREEN if channel else ft.Colors.RED
 
         if self.bot_text:
             self.bot_text.value = bot_user if bot_user else "未設定"
-            self.bot_text.color = ft.colors.GREEN if bot_user else ft.colors.RED
+            self.bot_text.color = ft.Colors.GREEN if bot_user else ft.Colors.RED
 
         self.page.update()
 
     def _open_diagnostics(self, e):
         """診断画面を開く"""
-        # TODO: 診断機能を実装
-        self._log_message("診断機能は実装中です")
+        self._log_message("診断ボタンが押されました（実装中）")
+        print("DEBUG: _open_diagnostics called")
 
     def _show_help(self, e):
         """ヘルプ表示"""
+        self._log_message("ヘルプボタンが押されました")
+        print("DEBUG: _show_help called")
         try:
             from .. import __version__
         except:
@@ -494,36 +514,37 @@ class MainWindow:
 """
 
         dialog = ft.AlertDialog(
+            modal=True,
             title=ft.Text("ヘルプ"),
             content=ft.Text(help_text),
             actions=[ft.TextButton("閉じる", on_click=lambda e: self._close_dialog())],
         )
-        self.page.dialog = dialog
-        dialog.open = True
-        self.page.update()
+        self.page.open(dialog)
 
     async def _show_error_dialog(self, title: str, message: str):
         """エラーダイアログ表示"""
         dialog = ft.AlertDialog(
+            modal=True,
             title=ft.Text(title),
             content=ft.Text(message),
             actions=[ft.TextButton("OK", on_click=lambda e: self._close_dialog())],
         )
-        self.page.dialog = dialog
-        dialog.open = True
-        self.page.update()
+        self.page.open(dialog)
 
     def _close_dialog(self):
         """ダイアログを閉じる"""
-        if self.page.dialog:
-            self.page.dialog.open = False
-            self.page.update()
+        if self.page.overlay:
+            # 最後に開いたダイアログを閉じる
+            for control in self.page.overlay:
+                if isinstance(control, ft.AlertDialog):
+                    self.page.close(control)
+                    break
 
     def _on_closing(self, e):
         """ウィンドウ終了時"""
         # 接続停止
         if self.is_connected:
-            asyncio.create_task(self._disconnect())
+            self.page.run_task(self._disconnect)
 
         # 設定保存
         self.config_manager.save_config()

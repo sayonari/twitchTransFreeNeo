@@ -68,8 +68,8 @@ class ConfigManager:
             "tts_read_lang": False,
             "tts_kind": "gTTS",  # gTTS, CeVIO
             "cevio_cast": "さとうささら",
-            "tts_text_max_length": 30,
-            "tts_message_for_omitting": "以下略",
+            "tts_text_max_length": 50,
+            "tts_message_for_omitting": "",
             "read_only_these_lang": [],
             
             # GUI設定

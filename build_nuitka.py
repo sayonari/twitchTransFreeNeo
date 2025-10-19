@@ -51,6 +51,7 @@ def build_macos(arch=None):
         "--enable-plugin=pylint-warnings",
         "--assume-yes-for-downloads",
         "--include-data-dir=twitchTransFreeNeo=twitchTransFreeNeo",
+        "--include-package-data=emoji",
         "run.py",
     ]
 
@@ -71,7 +72,7 @@ def build_macos(arch=None):
 
 def build_windows():
     """Windows用ビルド"""
-    print("🪟 Windows用ビルドを開始します")
+    print("🪟 Windows用ビルドを開始します（単体.exeモード）")
 
     # distディレクトリを作成
     Path("dist").mkdir(exist_ok=True)
@@ -81,13 +82,14 @@ def build_windows():
 
     cmd = [
         sys.executable, "-m", "nuitka",
-        "--standalone",
+        "--onefile",  # 単体.exeモード
         "--windows-console-mode=disable",
         f"--output-filename=twitchTransFreeNeo.exe",
         "--output-dir=dist",
         "--enable-plugin=pylint-warnings",
         "--assume-yes-for-downloads",
         "--include-data-dir=twitchTransFreeNeo=twitchTransFreeNeo",
+        "--include-package-data=emoji",
         "run.py",
     ]
 
@@ -118,6 +120,7 @@ def build_linux():
         "--enable-plugin=pylint-warnings",
         "--assume-yes-for-downloads",
         "--include-data-dir=twitchTransFreeNeo=twitchTransFreeNeo",
+        "--include-package-data=emoji",
         "run.py",
     ]
 

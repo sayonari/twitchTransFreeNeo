@@ -14,8 +14,15 @@ from typing import Dict, Any, Optional
 # Check if we're on macOS
 is_macos = platform.system() == 'Darwin'
 
-# Nuitka/PyInstallerバイナリ実行時の検出
-is_frozen = getattr(sys, 'frozen', False) or hasattr(sys, '__compiled__')
+# Nuitka/PyInstallerバイナリ実行時の検出（Nuitka onefileモード対応）
+exe_path = sys.executable
+is_frozen = (
+    getattr(sys, 'frozen', False) or
+    hasattr(sys, '__compiled__') or
+    '__compiled__' in sys.modules or
+    '/tmp/' in exe_path or  # Linux/macOS一時ディレクトリ
+    '/var/folders/' in exe_path  # macOS一時ディレクトリ
+)
 
 # Try to import pygame
 try:
@@ -40,9 +47,11 @@ if is_macos and is_frozen:
             threading.Thread(target=os.system, args=(cmd,)).start()
             return True
 
-    print("macOS Nuitkaバイナリモード: afplayを使用します")
+    print(f"macOS Nuitkaバイナリモード: afplayを使用します (exe_path: {exe_path})")
 else:
     play_with_afplay = None
+    if is_macos:
+        print(f"macOS通常モード (is_frozen={is_frozen}, exe_path: {exe_path})")
 
 class TTSEngine:
     """
@@ -59,14 +68,14 @@ class TTSEngine:
         
         # tmpディレクトリを作成（run.pyと同じ階層）
         # 実行ファイルがある場所から相対パスでtmpディレクトリを指定
-        import sys
-        if getattr(sys, 'frozen', False):
-            # PyInstallerでビルドされた実行ファイルの場合
-            base_dir = os.path.dirname(sys.executable)
+        if is_frozen:
+            # Nuitka/PyInstallerでビルドされた実行ファイルの場合
+            # sys.argv[0]を使用（onefileモードで正しいパス）
+            base_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
         else:
             # 通常のPythonスクリプトの場合
             base_dir = os.getcwd()
-        
+
         self.tmp_dir = os.path.join(base_dir, "tmp")
         if not os.path.exists(self.tmp_dir):
             os.makedirs(self.tmp_dir)
@@ -175,61 +184,63 @@ class TTSEngine:
             # 音声再生段階 - プラットフォーム別に最適な方法を選択
             play_success = False
 
-            # macOS Nuitkaバイナリの場合は、最初にafplayを使用
-            if is_macos and is_frozen and play_with_afplay:
-                try:
-                    if self.config.get("debug", False):
-                        print(f"TTS: Using afplay for macOS Nuitka binary")
-                    play_success = play_with_afplay(tts_file, block=True)
-                    if play_success and self.config.get("debug", False):
-                        print("TTS: afplay completed successfully")
-                except Exception as afplay_error:
-                    print(f'TTS afplay error: {afplay_error}')
-                    if self.config.get("debug", False):
+            # macOSでは常に最初にafplayを使用（バイナリ/通常実行問わず）
+            if is_macos:
+                # Nuitkaバイナリの場合は専用関数を使用
+                if is_frozen and play_with_afplay:
+                    try:
+                        if self.config.get("debug", False):
+                            print(f"TTS: Using afplay for macOS Nuitka binary")
+                        play_success = play_with_afplay(tts_file, block=True)
+                        if play_success and self.config.get("debug", False):
+                            print("TTS: afplay completed successfully")
+                    except Exception as afplay_error:
+                        print(f'TTS afplay error: {afplay_error}')
+                        if self.config.get("debug", False):
+                            import traceback
+                            traceback.print_exc()
+
+                # 通常のPython実行時もafplayを使用
+                if not play_success:
+                    try:
+                        # デバッグ情報を強化
+                        print(f"TTS: Using afplay for macOS")
+                        print(f"TTS: File path: {tts_file}")
+                        print(f"TTS: File exists: {os.path.exists(tts_file)}")
+                        if os.path.exists(tts_file):
+                            print(f"TTS: File size: {os.path.getsize(tts_file)} bytes")
+                            # 絶対パスを使用
+                            abs_path = os.path.abspath(tts_file)
+                            print(f"TTS: Absolute path: {abs_path}")
+
+                            # subprocessを使用してより詳細なエラー情報を取得
+                            import subprocess
+                            try:
+                                result = subprocess.run(['afplay', abs_path],
+                                                      capture_output=True,
+                                                      text=True,
+                                                      timeout=10)
+                                if result.returncode == 0:
+                                    play_success = True
+                                    print("TTS: afplay completed successfully")
+                                else:
+                                    print(f"TTS warning: afplay failed with code {result.returncode}")
+                                    if result.stderr:
+                                        print(f"TTS stderr: {result.stderr}")
+                            except subprocess.TimeoutExpired:
+                                print("TTS error: afplay timeout")
+                            except FileNotFoundError:
+                                print("TTS error: afplay command not found")
+                                # フォールバック: os.systemを試す
+                                result = os.system(f"afplay '{abs_path}'")
+                                if result == 0:
+                                    play_success = True
+                        else:
+                            print(f"TTS error: File does not exist: {tts_file}")
+                    except Exception as afplay_error:
+                        print(f'TTS afplay error: {afplay_error}')
                         import traceback
                         traceback.print_exc()
-
-            # macOSでは次にafplayを使用（通常のPython実行時）
-            elif is_macos and not play_success:
-                try:
-                    # デバッグ情報を強化
-                    print(f"TTS: Using afplay for macOS")
-                    print(f"TTS: File path: {tts_file}")
-                    print(f"TTS: File exists: {os.path.exists(tts_file)}")
-                    if os.path.exists(tts_file):
-                        print(f"TTS: File size: {os.path.getsize(tts_file)} bytes")
-                        # 絶対パスを使用
-                        abs_path = os.path.abspath(tts_file)
-                        print(f"TTS: Absolute path: {abs_path}")
-                        
-                        # subprocessを使用してより詳細なエラー情報を取得
-                        import subprocess
-                        try:
-                            result = subprocess.run(['afplay', abs_path], 
-                                                  capture_output=True, 
-                                                  text=True, 
-                                                  timeout=10)
-                            if result.returncode == 0:
-                                play_success = True
-                                print("TTS: afplay completed successfully")
-                            else:
-                                print(f"TTS warning: afplay failed with code {result.returncode}")
-                                if result.stderr:
-                                    print(f"TTS stderr: {result.stderr}")
-                        except subprocess.TimeoutExpired:
-                            print("TTS error: afplay timeout")
-                        except FileNotFoundError:
-                            print("TTS error: afplay command not found")
-                            # フォールバック: os.systemを試す
-                            result = os.system(f"afplay '{abs_path}'")
-                            if result == 0:
-                                play_success = True
-                    else:
-                        print(f"TTS error: File does not exist: {tts_file}")
-                except Exception as afplay_error:
-                    print(f'TTS afplay error: {afplay_error}')
-                    import traceback
-                    traceback.print_exc()
             
             # Method 1: pygame (高い優先度、クロスプラットフォーム対応)
             if pygame_available and not play_success:
@@ -258,7 +269,7 @@ class TTSEngine:
                     except:
                         pass
             
-            # Method 2: Other system-specific commands
+            # Method 2: Other system-specific commands (Windows/Linux)
             if not play_success:
                 try:
                     if platform.system() == 'Windows':
@@ -267,16 +278,6 @@ class TTSEngine:
                         import winsound
                         winsound.PlaySound(tts_file, winsound.SND_FILENAME)
                         play_success = True
-                    elif platform.system() == 'Darwin':  # macOS
-                        if self.config.get("debug", False):
-                            print(f"TTS: Attempting macOS afplay: {tts_file}")
-                        result = os.system(f"afplay '{tts_file}'")
-                        if result == 0:
-                            play_success = True
-                            if self.config.get("debug", False):
-                                print("TTS: afplay completed successfully")
-                        else:
-                            print(f"TTS warning: macOS afplay failed with code {result}")
                     elif platform.system() == 'Linux':
                         if self.config.get("debug", False):
                             print(f"TTS: Attempting Linux audio commands: {tts_file}")
