@@ -481,8 +481,21 @@ class MainWindow:
 
     def _open_diagnostics(self, e):
         """診断画面を開く"""
-        self._log_message("診断ボタンが押されました（実装中）")
+        self._log_message("診断ボタンが押されました")
         print("DEBUG: _open_diagnostics called")
+        try:
+            from .diagnostics_dialog import DiagnosticsDialog
+            config = self.config_manager.get_all()
+            print(f"DEBUG: config loaded: {len(config)} items")
+            diag_dialog = DiagnosticsDialog(self.page, config)
+            print("DEBUG: DiagnosticsDialog created")
+            diag_dialog.show()
+            print("DEBUG: DiagnosticsDialog.show() called")
+        except Exception as ex:
+            print(f"ERROR in _open_diagnostics: {ex}")
+            import traceback
+            traceback.print_exc()
+            self._log_message(f"診断ダイアログエラー: {ex}")
 
     def _show_help(self, e):
         """ヘルプ表示"""
