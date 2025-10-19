@@ -27,6 +27,9 @@ def build_macos(arch=None):
     """macOS用ビルド"""
     print(f"🍎 macOS用ビルドを開始します（アーキテクチャ: {arch or 'デフォルト'}）")
 
+    # distディレクトリを作成
+    Path("dist").mkdir(exist_ok=True)
+
     version = get_version()
     output_name = f"twitchTransFreeNeo_{version}_macos"
     if arch:
@@ -64,6 +67,9 @@ def build_windows():
     """Windows用ビルド"""
     print("🪟 Windows用ビルドを開始します")
 
+    # distディレクトリを作成
+    Path("dist").mkdir(exist_ok=True)
+
     version = get_version()
     output_name = f"twitchTransFreeNeo_{version}_windows"
 
@@ -91,6 +97,9 @@ def build_windows():
 def build_linux():
     """Linux用ビルド"""
     print("🐧 Linux用ビルドを開始します")
+
+    # distディレクトリを作成
+    Path("dist").mkdir(exist_ok=True)
 
     version = get_version()
     output_name = f"twitchTransFreeNeo_{version}_linux"
