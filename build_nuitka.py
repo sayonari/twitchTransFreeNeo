@@ -12,6 +12,12 @@ import platform
 import subprocess
 from pathlib import Path
 
+# Windows環境でのUTF-8出力を確保
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 def get_version():
     """バージョンを取得"""
     try:
