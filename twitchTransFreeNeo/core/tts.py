@@ -65,21 +65,26 @@ class TTSEngine:
         self.synth_queue = queue.Queue()
         self.is_running = False
         self.thread_voice: Optional[threading.Thread] = None
-        
-        # tmpディレクトリを作成（run.pyと同じ階層）
-        # 実行ファイルがある場所から相対パスでtmpディレクトリを指定
-        if is_frozen:
-            # Nuitka/PyInstallerでビルドされた実行ファイルの場合
-            # sys.argv[0]を使用（onefileモードで正しいパス）
-            base_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-        else:
-            # 通常のPythonスクリプトの場合
-            base_dir = os.getcwd()
 
-        self.tmp_dir = os.path.join(base_dir, "tmp")
+        # tmpディレクトリを作成
+        # App Translocationによる読み取り専用問題を回避するため、
+        # システムの一時ディレクトリまたはユーザーホームディレクトリを使用
+        import tempfile
+
+        if is_frozen:
+            # ビルドされた実行ファイルの場合はユーザーホームディレクトリを使用
+            # （macOSのApp Translocation対策）
+            home_dir = os.path.expanduser("~")
+            self.tmp_dir = os.path.join(home_dir, ".twitchTransFreeNeo", "tmp")
+        else:
+            # 開発環境ではプロジェクトディレクトリのtmpを使用
+            base_dir = os.getcwd()
+            self.tmp_dir = os.path.join(base_dir, "tmp")
+
+        # ディレクトリが存在しない場合は作成
         if not os.path.exists(self.tmp_dir):
-            os.makedirs(self.tmp_dir)
-        
+            os.makedirs(self.tmp_dir, exist_ok=True)
+
         if self.config.get("debug", False):
             print(f"TTS tmp directory: {self.tmp_dir}")
 
