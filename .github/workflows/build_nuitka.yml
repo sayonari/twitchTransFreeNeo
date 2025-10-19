@@ -92,6 +92,7 @@ jobs:
         with:
           draft: false
           prerelease: true
+          make_latest: false  # Pre-releaseはlatestにしない
           files: |
             dist/*.tar.gz
             dist/*.zip

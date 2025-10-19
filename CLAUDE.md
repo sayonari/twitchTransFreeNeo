@@ -43,6 +43,19 @@ twitchTransFreeNeo - Twitchチャット翻訳ツール（GUI版）
 4. **ローカルビルド（テスト用）**: `uv run python build_nuitka.py`
 5. **本番ビルド**: GitHub Actionsで自動実行（タグpush時）
 
+## リリース手順（重要）
+1. コードをコミット・プッシュ
+2. タグを作成してプッシュ: `git tag -a vX.X.X_Beta -m "説明" && git push origin vX.X.X_Beta`
+3. GitHub Actionsでビルドが完了するのを待つ
+4. **【必須確認】リリースページでPre-releaseになっているか確認**
+   - https://github.com/sayonari/twitchTransFreeNeo/releases
+   - ✅ 「Pre-release」ラベルが付いている
+   - ✅ 「Latest」になっていない
+   - ❌ なっていない場合: 手動で「Edit release」→「Set as a pre-release」にチェック
+5. ワークフロー設定: `.github/workflows/build_nuitka.yml`
+   - `prerelease: true` - Pre-releaseに設定
+   - `make_latest: false` - Latestにしない
+
 ## 既知の改善点
 - Fletへの移行により、macOS固有のtkinter問題から解放
 - deep-translatorによる最新のGoogle翻訳API対応
