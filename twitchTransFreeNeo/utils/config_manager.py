@@ -11,9 +11,9 @@ class ConfigManager:
     def __init__(self, config_file: str = "config.json"):
         # 実行ファイルと同じディレクトリに設定ファイルを配置
         import sys
-        if getattr(sys, 'frozen', False):
-            # PyInstallerでビルドされた場合
-            application_path = os.path.dirname(sys.executable)
+        if getattr(sys, 'frozen', False) or hasattr(sys, '__compiled__'):
+            # Nuitkaまたはその他のバイナリ実行時
+            application_path = os.path.dirname(os.path.abspath(sys.argv[0]))
         else:
             # 通常のPythonスクリプトとして実行された場合
             application_path = os.path.dirname(os.path.abspath(__file__))

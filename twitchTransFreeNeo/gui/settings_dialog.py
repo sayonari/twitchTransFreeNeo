@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import flet as ft
-from typing import Dict, Any, Callable
+from typing import Dict, Any, Callable, Optional
 import webbrowser
 
 

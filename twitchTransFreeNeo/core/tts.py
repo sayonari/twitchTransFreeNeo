@@ -14,6 +14,9 @@ from typing import Dict, Any, Optional
 # Check if we're on macOS
 is_macos = platform.system() == 'Darwin'
 
+# Nuitka/PyInstallerバイナリ実行時の検出
+is_frozen = getattr(sys, 'frozen', False) or hasattr(sys, '__compiled__')
+
 # Try to import pygame
 try:
     import pygame
@@ -21,12 +24,25 @@ try:
 except ImportError:
     pygame_available = False
 
-# For macOS, try to import AppKit if needed
-if is_macos:
-    try:
-        import AppKit
-    except ImportError:
-        pass
+# macOS かつ バイナリ実行時は、afplayを直接使用する関数を定義
+if is_macos and is_frozen:
+    def play_with_afplay(sound_file, block=True):
+        """macOS Nuitkaバイナリ用の音声再生"""
+        if not os.path.exists(sound_file):
+            print(f"Sound file not found: {sound_file}")
+            return False
+
+        cmd = f"afplay '{sound_file}'"
+        if block:
+            result = os.system(cmd)
+            return result == 0
+        else:
+            threading.Thread(target=os.system, args=(cmd,)).start()
+            return True
+
+    print("macOS Nuitkaバイナリモード: afplayを使用します")
+else:
+    play_with_afplay = None
 
 class TTSEngine:
     """
@@ -158,9 +174,23 @@ class TTSEngine:
             
             # 音声再生段階 - プラットフォーム別に最適な方法を選択
             play_success = False
-            
-            # macOSでは最初からafplayを使用（playsoundは不安定）
-            if is_macos:
+
+            # macOS Nuitkaバイナリの場合は、最初にafplayを使用
+            if is_macos and is_frozen and play_with_afplay:
+                try:
+                    if self.config.get("debug", False):
+                        print(f"TTS: Using afplay for macOS Nuitka binary")
+                    play_success = play_with_afplay(tts_file, block=True)
+                    if play_success and self.config.get("debug", False):
+                        print("TTS: afplay completed successfully")
+                except Exception as afplay_error:
+                    print(f'TTS afplay error: {afplay_error}')
+                    if self.config.get("debug", False):
+                        import traceback
+                        traceback.print_exc()
+
+            # macOSでは次にafplayを使用（通常のPython実行時）
+            elif is_macos and not play_success:
                 try:
                     # デバッグ情報を強化
                     print(f"TTS: Using afplay for macOS")

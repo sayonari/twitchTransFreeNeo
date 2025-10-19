@@ -61,8 +61,16 @@ jobs:
       - name: Create Archive (macOS/Linux)
         if: runner.os != 'Windows'
         run: |
-          cd dist
-          tar -czvf ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz run.dist/
+          cd dist/run.dist
+          # 実行ファイルだけをアーカイブに含める
+          if [ -f "twitchTransFreeNeo" ]; then
+            # macOS/Linuxバイナリ
+            tar -czvf ../${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz twitchTransFreeNeo
+          elif [ -d "twitchTransFreeNeo.app" ]; then
+            # macOS .appバンドル
+            tar -czvf ../${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz twitchTransFreeNeo.app
+          fi
+          cd ..
           echo "Created archive: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.tar.gz"
           ls -lh
 
@@ -70,8 +78,12 @@ jobs:
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          cd dist
-          Compress-Archive -Path run.dist/* -DestinationPath ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip
+          cd dist/run.dist
+          # 実行ファイルだけをアーカイブに含める
+          if (Test-Path "twitchTransFreeNeo.exe") {
+            Compress-Archive -Path twitchTransFreeNeo.exe -DestinationPath ../${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip
+          }
+          cd ..
           echo "Created archive: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip"
           Get-ChildItem
 

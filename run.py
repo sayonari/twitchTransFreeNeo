@@ -9,16 +9,24 @@ PyInstaller対応のエントリーポイント
 import sys
 import os
 
-# 実行ファイルの場合のパス処理
-if getattr(sys, 'frozen', False):
-    base_path = sys._MEIPASS
-    # PyInstallerでビルドされた場合、cacert.pemのパスを設定
+# 実行ファイルのディレクトリを取得（Nuitka/PyInstaller対応）
+if getattr(sys, 'frozen', False) or hasattr(sys, '__compiled__'):
+    # Nuitkaまたはその他のバイナリ実行時
+    base_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+
+    # PyInstallerの場合のMEIPASS対応
+    if hasattr(sys, '_MEIPASS'):
+        internal_path = sys._MEIPASS
+    else:
+        internal_path = base_path
+
+    # SSL証明書のパスを設定
     # 実行ファイルと同じディレクトリにcacert.pemがある場合
-    cert_path = os.path.join(os.path.dirname(sys.executable), 'cacert.pem')
-    if not os.path.exists(cert_path):
+    cert_path = os.path.join(base_path, 'cacert.pem')
+    if not os.path.exists(cert_path) and hasattr(sys, '_MEIPASS'):
         # MEIPASSディレクトリ内のcacert.pemを探す
-        cert_path = os.path.join(base_path, 'cacert.pem')
-    
+        cert_path = os.path.join(internal_path, 'cacert.pem')
+
     if os.path.exists(cert_path):
         # SSL証明書のパスを環境変数に設定
         os.environ['SSL_CERT_FILE'] = cert_path
@@ -28,6 +36,7 @@ if getattr(sys, 'frozen', False):
     else:
         print(f"警告: SSL証明書ファイルが見つかりません")
 else:
+    # 通常のPythonスクリプト実行時
     base_path = os.path.dirname(os.path.abspath(__file__))
 
 # パスを追加
