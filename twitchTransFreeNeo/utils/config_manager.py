@@ -117,9 +117,9 @@ class ConfigManager:
             "tts_enabled": False,
             "tts_in": True,
             "tts_out": True,
-            "tts_read_username": True,  # 互換性のため残す
-            "tts_read_username_input": True,
-            "tts_read_username_output": True,
+            "tts_read_username": False,  # 互換性のため残す
+            "tts_read_username_input": False,
+            "tts_read_username_output": False,
             "tts_read_content": True,
             "tts_read_lang": False,
             "tts_kind": "gTTS",  # gTTS, CeVIO

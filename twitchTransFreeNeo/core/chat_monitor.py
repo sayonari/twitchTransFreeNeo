@@ -219,7 +219,7 @@ if TWITCHIO_AVAILABLE:
                     color = self.config.get("trans_text_color", "GoldenRod")
                     await channel.send(f"/color {color}")
                     from .. import __version__
-                    startup_message = f"twitchTFNeo v{__version__} by saatan / sayonari"
+                    startup_message = f"twitchTFNeo v{__version__} by さあたん / 西村良太"
                     await channel.send(f"/me {startup_message}")
                 except Exception as e:
                     print(f"チャンネル参加時メッセージ送信エラー: {e}")
@@ -454,7 +454,7 @@ if TWITCHIO_AVAILABLE:
         async def version_command(self, ctx):
             """バージョン表示コマンド"""
             from .. import __version__
-            await ctx.send(f'twitchTFNeo v{__version__} by saatan/sayonari')
+            await ctx.send(f'twitchTFNeo v{__version__} by さあたん / 西村良太')
     
         def stop_bot(self):
             """ボット停止"""
