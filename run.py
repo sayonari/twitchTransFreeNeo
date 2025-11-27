@@ -21,20 +21,40 @@ if getattr(sys, 'frozen', False) or hasattr(sys, '__compiled__'):
         internal_path = base_path
 
     # SSL証明書のパスを設定
-    # 実行ファイルと同じディレクトリにcacert.pemがある場合
-    cert_path = os.path.join(base_path, 'cacert.pem')
-    if not os.path.exists(cert_path) and hasattr(sys, '_MEIPASS'):
-        # MEIPASSディレクトリ内のcacert.pemを探す
-        cert_path = os.path.join(internal_path, 'cacert.pem')
+    cert_path = None
 
-    if os.path.exists(cert_path):
-        # SSL証明書のパスを環境変数に設定
+    # 1. certifiパッケージから取得を試みる（PyInstaller --collect-data=certifi 対応）
+    try:
+        import certifi
+        cert_path = certifi.where()
+        if os.path.exists(cert_path):
+            print(f"SSL証明書を設定 (certifi): {cert_path}")
+        else:
+            cert_path = None
+    except ImportError:
+        pass
+
+    # 2. バンドルされたcacert.pemを探す
+    if not cert_path:
+        # PyInstallerのMEIPASS内のcertifiフォルダを探す
+        possible_paths = [
+            os.path.join(internal_path, 'certifi', 'cacert.pem'),
+            os.path.join(internal_path, 'cacert.pem'),
+            os.path.join(base_path, 'cacert.pem'),
+        ]
+        for path in possible_paths:
+            if os.path.exists(path):
+                cert_path = path
+                print(f"SSL証明書を設定 (bundled): {cert_path}")
+                break
+
+    # SSL証明書のパスを環境変数に設定
+    if cert_path and os.path.exists(cert_path):
         os.environ['SSL_CERT_FILE'] = cert_path
         os.environ['REQUESTS_CA_BUNDLE'] = cert_path
         os.environ['CURL_CA_BUNDLE'] = cert_path
-        print(f"SSL証明書を設定: {cert_path}")
     else:
-        print(f"警告: SSL証明書ファイルが見つかりません")
+        print("警告: SSL証明書ファイルが見つかりません")
 else:
     # 通常のPythonスクリプト実行時
     base_path = os.path.dirname(os.path.abspath(__file__))

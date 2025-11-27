@@ -47,6 +47,7 @@ def build_macos(arch=None):
         "--noconfirm",
         "--clean",
         "--add-data=twitchTransFreeNeo:twitchTransFreeNeo",
+        "--collect-data=certifi",  # SSL証明書をバンドル
         "run.py",
     ]
 
@@ -82,6 +83,7 @@ def build_windows():
         "--noconfirm",
         "--clean",
         "--add-data=twitchTransFreeNeo;twitchTransFreeNeo",
+        "--collect-data=certifi",  # SSL証明書をバンドル
         "run.py",
     ]
 
@@ -110,6 +112,7 @@ def build_linux():
         "--noconfirm",
         "--clean",
         "--add-data=twitchTransFreeNeo:twitchTransFreeNeo",
+        "--collect-data=certifi",  # SSL証明書をバンドル
         "run.py",
     ]
 

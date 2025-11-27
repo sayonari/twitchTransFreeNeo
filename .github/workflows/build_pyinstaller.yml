@@ -92,11 +92,11 @@ jobs:
         shell: powershell
         run: |
           cd dist
-          # Windows単体.exeをそのまま使用
+          # Windows .exeをzipで圧縮（ダウンロードブロック回避）
           if (Test-Path "twitchTransFreeNeo.exe") {
-            Move-Item -Path twitchTransFreeNeo.exe -Destination ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.exe
-            echo "Created executable: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.exe"
-            Get-ChildItem *.exe
+            Compress-Archive -Path twitchTransFreeNeo.exe -DestinationPath "${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip"
+            echo "Created archive: ${{ matrix.artifact }}_${{ steps.get_version.outputs.version }}.zip"
+            Get-ChildItem *.zip
           }
 
       - name: Upload to Release
@@ -108,5 +108,4 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.zip
-            dist/*.exe
           fail_on_unmatched_files: false
