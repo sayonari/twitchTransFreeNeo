@@ -52,6 +52,7 @@ def build_macos(arch=None):
         "--assume-yes-for-downloads",
         "--include-data-dir=twitchTransFreeNeo=twitchTransFreeNeo",
         "--include-package-data=emoji",
+        "--include-package-data=certifi",  # SSL証明書をバンドル
         "run.py",
     ]
 
@@ -90,6 +91,7 @@ def build_windows():
         "--assume-yes-for-downloads",
         "--include-data-dir=twitchTransFreeNeo=twitchTransFreeNeo",
         "--include-package-data=emoji",
+        "--include-package-data=certifi",  # SSL証明書をバンドル
         "run.py",
     ]
 
@@ -121,6 +123,7 @@ def build_linux():
         "--assume-yes-for-downloads",
         "--include-data-dir=twitchTransFreeNeo=twitchTransFreeNeo",
         "--include-package-data=emoji",
+        "--include-package-data=certifi",  # SSL証明書をバンドル
         "run.py",
     ]
 

@@ -1,12 +1,11 @@
-name: Build twitchTransFreeNeo with PyInstaller (Fast)
+name: Build twitchTransFreeNeo with PyInstaller
 
-# 開発/テスト用の高速ビルド
-# タグ例: dev-v0.2.5_Beta, test-v0.2.5_Beta
+# 本番リリース用（PyInstaller）
+# タグ例: v0.2.8_Beta, v1.0.0
 on:
   push:
     tags:
-      - "dev-v*"   # 開発版
-      - "test-v*"  # テスト版
+      - "v*"
   workflow_dispatch:  # 手動実行も可能
 
 permissions:
