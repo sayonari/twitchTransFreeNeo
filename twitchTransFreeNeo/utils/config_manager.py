@@ -7,29 +7,85 @@ from typing import Dict, Any, Optional
 
 class ConfigManager:
     """設定管理クラス - JSONベースの設定システム"""
-    
+
     def __init__(self, config_file: str = "config.json"):
         # 実行ファイルと同じディレクトリに設定ファイルを配置
         import sys
+        application_path = self._get_application_path()
+
+        self.config_file = os.path.join(application_path, config_file)
+        print(f"設定ファイルパス: {self.config_file}")
+
+        self.config = self._load_default_config()
+
+        # 設定ファイルが存在しない場合、デフォルト設定で作成
+        if not os.path.exists(self.config_file):
+            print(f"設定ファイル {self.config_file} が見つかりません。デフォルト設定で作成します。")
+            self.save_config()
+
+        self.load_config()
+
+    def _get_application_path(self) -> str:
+        """アプリケーションの実行パスを取得（バイナリ/スクリプト両対応）"""
+        import sys
+
         if getattr(sys, 'frozen', False) or hasattr(sys, '__compiled__'):
             # Nuitkaまたはその他のバイナリ実行時
-            application_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+            # sys.argv[0] は実行ファイルへのパス
+            exe_path = os.path.abspath(sys.argv[0])
+
+            # Windows onefileモード対策: 実際のexeファイルの場所を使用
+            # （一時ディレクトリではなく、ユーザーがexeを配置した場所）
+            application_path = os.path.dirname(exe_path)
+
+            # 追加チェック: パスが書き込み可能か確認
+            # 書き込み不可の場合はユーザーのホームディレクトリを使用
+            if not self._is_writable(application_path):
+                # ユーザーのアプリデータディレクトリを使用
+                application_path = self._get_user_data_dir()
+                print(f"警告: 実行ディレクトリに書き込めません。設定を {application_path} に保存します。")
         else:
             # 通常のPythonスクリプトとして実行された場合
             application_path = os.path.dirname(os.path.abspath(__file__))
             # プロジェクトルートに配置（2階層上）
             application_path = os.path.dirname(os.path.dirname(application_path))
-        
-        self.config_file = os.path.join(application_path, config_file)
-        self.config = self._load_default_config()
-        
-        # 設定ファイルが存在しない場合、デフォルト設定で作成
-        if not os.path.exists(self.config_file):
-            print(f"設定ファイル {self.config_file} が見つかりません。デフォルト設定で作成します。")
-            self.save_config()
-        
-        self.load_config()
-    
+
+        return application_path
+
+    def _is_writable(self, path: str) -> bool:
+        """ディレクトリが書き込み可能かチェック"""
+        try:
+            test_file = os.path.join(path, '.write_test')
+            with open(test_file, 'w') as f:
+                f.write('test')
+            os.remove(test_file)
+            return True
+        except (IOError, OSError, PermissionError):
+            return False
+
+    def _get_user_data_dir(self) -> str:
+        """ユーザーデータディレクトリを取得（クロスプラットフォーム対応）"""
+        import sys
+
+        app_name = "twitchTransFreeNeo"
+
+        if sys.platform == "win32":
+            # Windows: %APPDATA%\twitchTransFreeNeo
+            base = os.environ.get('APPDATA', os.path.expanduser('~'))
+            data_dir = os.path.join(base, app_name)
+        elif sys.platform == "darwin":
+            # macOS: ~/Library/Application Support/twitchTransFreeNeo
+            data_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', app_name)
+        else:
+            # Linux: ~/.config/twitchTransFreeNeo
+            base = os.environ.get('XDG_CONFIG_HOME', os.path.join(os.path.expanduser('~'), '.config'))
+            data_dir = os.path.join(base, app_name)
+
+        # ディレクトリが存在しない場合は作成
+        os.makedirs(data_dir, exist_ok=True)
+
+        return data_dir
+
     def _load_default_config(self) -> Dict[str, Any]:
         """デフォルト設定を返す"""
         return {
