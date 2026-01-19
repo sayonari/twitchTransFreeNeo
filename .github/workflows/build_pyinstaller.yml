@@ -20,7 +20,7 @@ jobs:
           - os: macos-latest
             target: macos_arm64
             artifact: twitchTransFreeNeo_macos_arm64
-          - os: macos-13
+          - os: macos-14
             target: macos_x86_64
             artifact: twitchTransFreeNeo_macos_x86_64
           - os: windows-latest
