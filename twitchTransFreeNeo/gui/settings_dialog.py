@@ -9,6 +9,43 @@ import webbrowser
 class SettingsDialog:
     """Fletベースの設定ダイアログ（改善版）"""
 
+    # サポートする言語リスト（Google翻訳対応）
+    SUPPORTED_LANGUAGES = [
+        # 主要言語（上部に配置）
+        ('ja', '日本語'), ('en', '英語'), ('ko', '韓国語'),
+        ('zh-CN', '中国語（簡体字）'), ('zh-TW', '中国語（繁体字）'),
+        # ヨーロッパ言語
+        ('fr', 'フランス語'), ('de', 'ドイツ語'), ('es', 'スペイン語'),
+        ('pt', 'ポルトガル語'), ('it', 'イタリア語'), ('ru', 'ロシア語'),
+        ('nl', 'オランダ語'), ('pl', 'ポーランド語'), ('uk', 'ウクライナ語'),
+        ('cs', 'チェコ語'), ('sv', 'スウェーデン語'), ('da', 'デンマーク語'),
+        ('fi', 'フィンランド語'), ('no', 'ノルウェー語'), ('el', 'ギリシャ語'),
+        ('hu', 'ハンガリー語'), ('ro', 'ルーマニア語'), ('bg', 'ブルガリア語'),
+        ('hr', 'クロアチア語'), ('sk', 'スロバキア語'), ('sl', 'スロベニア語'),
+        ('lt', 'リトアニア語'), ('lv', 'ラトビア語'), ('et', 'エストニア語'),
+        # アジア言語
+        ('th', 'タイ語'), ('vi', 'ベトナム語'), ('id', 'インドネシア語'),
+        ('ms', 'マレー語'), ('tl', 'フィリピン語/タガログ語'), ('hi', 'ヒンディー語'),
+        ('bn', 'ベンガル語'), ('ta', 'タミル語'), ('te', 'テルグ語'),
+        ('mr', 'マラーティー語'), ('gu', 'グジャラート語'), ('kn', 'カンナダ語'),
+        ('ml', 'マラヤーラム語'), ('pa', 'パンジャブ語'), ('ur', 'ウルドゥー語'),
+        ('my', 'ミャンマー語'), ('km', 'クメール語'), ('lo', 'ラオ語'),
+        ('ne', 'ネパール語'), ('si', 'シンハラ語'), ('mn', 'モンゴル語'),
+        # 中東・アフリカ言語
+        ('ar', 'アラビア語'), ('he', 'ヘブライ語'), ('fa', 'ペルシャ語'),
+        ('tr', 'トルコ語'), ('sw', 'スワヒリ語'), ('af', 'アフリカーンス語'),
+        ('am', 'アムハラ語'), ('zu', 'ズールー語'),
+        # その他
+        ('ca', 'カタルーニャ語'), ('eu', 'バスク語'), ('gl', 'ガリシア語'),
+        ('is', 'アイスランド語'), ('ga', 'アイルランド語'), ('cy', 'ウェールズ語'),
+        ('mt', 'マルタ語'), ('sq', 'アルバニア語'), ('mk', 'マケドニア語'),
+        ('sr', 'セルビア語'), ('bs', 'ボスニア語'), ('ka', 'ジョージア語'),
+        ('az', 'アゼルバイジャン語'), ('kk', 'カザフ語'), ('uz', 'ウズベク語'),
+        ('hy', 'アルメニア語'), ('la', 'ラテン語'), ('eo', 'エスペラント語'),
+        # カスタム入力用
+        ('custom', '✏️ その他（直接入力）'),
+    ]
+
     def __init__(self, page: ft.Page, config: Dict[str, Any], on_save: Callable[[Dict[str, Any]], None]):
         self.page = page
         self.config = config.copy()
@@ -32,9 +69,18 @@ class SettingsDialog:
         # 翻訳設定
         self.home_lang_dropdown: Optional[ft.Dropdown] = None
         self.other_lang_dropdown: Optional[ft.Dropdown] = None
+        self.home_lang_custom_field: Optional[ft.TextField] = None
+        self.other_lang_custom_field: Optional[ft.TextField] = None
+        self.home_lang_custom_container: Optional[ft.Container] = None
+        self.other_lang_custom_container: Optional[ft.Container] = None
         self.translator_dropdown: Optional[ft.Dropdown] = None
         self.google_suffix_dropdown: Optional[ft.Dropdown] = None
         self.deepl_key_field: Optional[ft.TextField] = None
+
+        # プラットフォーム設定
+        self.platform_dropdown: Optional[ft.Dropdown] = None
+        self.youtube_video_id_field: Optional[ft.TextField] = None
+        self.youtube_container: Optional[ft.Container] = None
 
         # フィルタ設定
         self.ignore_lang_field: Optional[ft.TextField] = None
@@ -166,6 +212,35 @@ class SettingsDialog:
 
     def _create_basic_tab(self) -> ft.Container:
         """基本設定タブ"""
+
+        # プラットフォーム選択（同時配信対応）
+        current_platform = self.config.get("platform", "twitch")
+        self.platform_dropdown = ft.Dropdown(
+            label="配信プラットフォーム",
+            value=current_platform,
+            options=[
+                ft.DropdownOption("twitch", "Twitch のみ"),
+                ft.DropdownOption("youtube", "YouTube Live のみ"),
+                ft.DropdownOption("both", "同時配信 (Twitch + YouTube)"),
+            ],
+            width=300,
+            on_change=lambda e: self._on_platform_change(),
+        )
+
+        platform_card = self._create_settings_card(
+            "プラットフォーム選択",
+            ft.Icons.CONNECTED_TV,
+            ft.Column([
+                self.platform_dropdown,
+                ft.Text(
+                    "※ YouTubeは読み取り専用（翻訳投稿はTwitchのみ）\n※ 同時配信では両方のチャットを監視・翻訳します",
+                    size=11, color=ft.Colors.GREY_600,
+                ),
+            ], spacing=4),
+            helper_text="単独配信または同時配信を選択"
+        )
+
+        # === Twitch設定 ===
         self.channel_field = ft.TextField(
             label="Twitchチャンネル名",
             value=self.config.get("twitch_channel", ""),
@@ -198,19 +273,66 @@ class SettingsDialog:
             on_click=lambda e: webbrowser.open("https://www.sayonari.com/trans_asr/ttfn_oauth.html"),
         )
 
-        # 接続設定カード
-        connection_card = self._create_settings_card(
-            "Twitch接続設定",
-            ft.Icons.LINK,
-            ft.Column([
-                self.channel_field,
-                self.username_field,
-                self.oauth_field,
-                oauth_button,
-            ], spacing=8),
-            helper_text="チャンネルに接続するために必要な設定です"
+        self.twitch_container = ft.Container(
+            content=self._create_settings_card(
+                "Twitch接続設定",
+                ft.Icons.LINK,
+                ft.Column([
+                    self.channel_field,
+                    self.username_field,
+                    self.oauth_field,
+                    oauth_button,
+                ], spacing=8),
+                helper_text="チャンネルに接続するために必要な設定です"
+            ),
+            visible=(current_platform in ["twitch", "both"]),
         )
 
+        # === YouTube設定 ===
+        self.youtube_video_id_field = ft.TextField(
+            label="YouTube動画ID / URL",
+            value=self.config.get("youtube_video_id", ""),
+            hint_text="例: dQw4w9WgXcQ または動画URL",
+            prefix_icon=ft.Icons.PLAY_CIRCLE,
+            width=400,
+        )
+
+        youtube_help_button = ft.ElevatedButton(
+            "動画IDの確認方法",
+            icon=ft.Icons.HELP_OUTLINE,
+            on_click=lambda e: webbrowser.open("https://support.google.com/youtube/answer/171780"),
+        )
+
+        self.youtube_container = ft.Container(
+            content=self._create_settings_card(
+                "YouTube Live設定",
+                ft.Icons.SMART_DISPLAY,
+                ft.Column([
+                    self.youtube_video_id_field,
+                    ft.Text(
+                        "URLから自動的に動画IDを抽出します\n例: https://www.youtube.com/watch?v=XXXXXXXXXXX",
+                        size=11, color=ft.Colors.GREY_600,
+                    ),
+                    youtube_help_button,
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.INFO, size=16, color=ft.Colors.AMBER_700),
+                            ft.Text(
+                                "YouTube Liveは読み取り専用です（APIキー不要）",
+                                size=12, color=ft.Colors.AMBER_700,
+                            ),
+                        ], spacing=4),
+                        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER),
+                        padding=8,
+                        border_radius=4,
+                    ),
+                ], spacing=8),
+                helper_text="ライブ配信の動画IDまたはURLを入力"
+            ),
+            visible=(current_platform in ["youtube", "both"]),
+        )
+
+        # === 共通設定 ===
         self.color_dropdown = ft.Dropdown(
             label="翻訳テキストの色",
             value=self.config.get("trans_text_color", "GoldenRod"),
@@ -234,7 +356,6 @@ class SettingsDialog:
             value=self.config.get("show_by_lang", True),
         )
 
-        # 表示設定カード
         display_card = self._create_settings_card(
             "チャット表示設定",
             ft.Icons.CHAT_BUBBLE_OUTLINE,
@@ -261,7 +382,6 @@ class SettingsDialog:
             value=self.config.get("view_only_mode", False),
         )
 
-        # その他設定カード
         misc_card = self._create_settings_card(
             "その他のオプション",
             ft.Icons.MORE_HORIZ,
@@ -275,12 +395,21 @@ class SettingsDialog:
         return ft.Container(
             content=ft.Column([
                 self._create_scroll_hint(),
-                connection_card,
+                platform_card,
+                self.twitch_container,
+                self.youtube_container,
                 display_card,
                 misc_card,
             ], scroll=ft.ScrollMode.ALWAYS, spacing=12),
             padding=10,
         )
+
+    def _on_platform_change(self):
+        """プラットフォーム変更時のハンドラ"""
+        platform = self.platform_dropdown.value
+        self.twitch_container.visible = platform in ["twitch", "both"]
+        self.youtube_container.visible = platform in ["youtube", "both"]
+        self.page.update()
 
     def _create_translation_tab(self) -> ft.Container:
         """翻訳設定タブ"""
@@ -314,48 +443,78 @@ class SettingsDialog:
             helper_text="ワンクリックで言語設定をプリセットに変更"
         )
 
+        # 言語ドロップダウンの初期値を決定
+        home_lang_value = self.config.get("lang_trans_to_home", "ja")
+        other_lang_value = self.config.get("lang_home_to_other", "en")
+
+        # 保存された言語がリストにない場合は custom を選択
+        lang_codes = [code for code, _ in self.SUPPORTED_LANGUAGES]
+        if home_lang_value not in lang_codes:
+            home_lang_custom_value = home_lang_value
+            home_lang_value = "custom"
+        else:
+            home_lang_custom_value = ""
+
+        if other_lang_value not in lang_codes:
+            other_lang_custom_value = other_lang_value
+            other_lang_value = "custom"
+        else:
+            other_lang_custom_value = ""
+
+        # ホーム言語ドロップダウン
         self.home_lang_dropdown = ft.Dropdown(
             label="ホーム言語（配信者の言語）",
-            value=self.config.get("lang_trans_to_home", "ja"),
-            options=[
-                ft.DropdownOption(lang, text) for lang, text in [
-                    ('ja', '日本語'), ('en', '英語'), ('ko', '韓国語'),
-                    ('zh-CN', '中国語（簡体字）'), ('zh-TW', '中国語（繁体字）'),
-                    ('fr', 'フランス語'), ('de', 'ドイツ語'), ('es', 'スペイン語'),
-                    ('pt', 'ポルトガル語'), ('it', 'イタリア語'), ('ru', 'ロシア語'),
-                    ('th', 'タイ語'), ('vi', 'ベトナム語'), ('id', 'インドネシア語'),
-                ]
-            ],
+            value=home_lang_value,
+            options=[ft.DropdownOption(lang, text) for lang, text in self.SUPPORTED_LANGUAGES],
             width=350,
+            on_change=lambda e: self._on_lang_dropdown_change("home"),
         )
 
+        # ホーム言語カスタム入力
+        self.home_lang_custom_field = ft.TextField(
+            label="言語コード（直接入力）",
+            value=home_lang_custom_value or self.config.get("lang_trans_to_home_custom", ""),
+            hint_text="例: fil, haw, mi",
+            width=200,
+        )
+        self.home_lang_custom_container = ft.Container(
+            content=self.home_lang_custom_field,
+            visible=(home_lang_value == "custom"),
+        )
+
+        # 外国語ドロップダウン
         self.other_lang_dropdown = ft.Dropdown(
             label="外国語（翻訳先）",
-            value=self.config.get("lang_home_to_other", "en"),
-            options=[
-                ft.DropdownOption(lang, text) for lang, text in [
-                    ('en', '英語'), ('ja', '日本語'), ('ko', '韓国語'),
-                    ('zh-CN', '中国語（簡体字）'), ('zh-TW', '中国語（繁体字）'),
-                    ('fr', 'フランス語'), ('de', 'ドイツ語'), ('es', 'スペイン語'),
-                    ('pt', 'ポルトガル語'), ('it', 'イタリア語'), ('ru', 'ロシア語'),
-                    ('th', 'タイ語'), ('vi', 'ベトナム語'), ('id', 'インドネシア語'),
-                ]
-            ],
+            value=other_lang_value,
+            options=[ft.DropdownOption(lang, text) for lang, text in self.SUPPORTED_LANGUAGES],
             width=350,
+            on_change=lambda e: self._on_lang_dropdown_change("other"),
+        )
+
+        # 外国語カスタム入力
+        self.other_lang_custom_field = ft.TextField(
+            label="言語コード（直接入力）",
+            value=other_lang_custom_value or self.config.get("lang_home_to_other_custom", ""),
+            hint_text="例: fil, haw, mi",
+            width=200,
+        )
+        self.other_lang_custom_container = ft.Container(
+            content=self.other_lang_custom_field,
+            visible=(other_lang_value == "custom"),
         )
 
         lang_card = self._create_settings_card(
             "言語設定",
             ft.Icons.LANGUAGE,
             ft.Column([
-                self.home_lang_dropdown,
-                self.other_lang_dropdown,
+                ft.Row([self.home_lang_dropdown, self.home_lang_custom_container], spacing=8, wrap=True),
+                ft.Row([self.other_lang_dropdown, self.other_lang_custom_container], spacing=8, wrap=True),
                 ft.Text(
-                    "ホーム言語のコメント → 外国語に翻訳\n外国語のコメント → ホーム言語に翻訳",
+                    "ホーム言語のコメント → 外国語に翻訳\n外国語のコメント → ホーム言語に翻訳\n※「その他」を選ぶとGoogle翻訳の任意の言語コードを入力できます",
                     size=11, color=ft.Colors.GREY_600,
                 ),
             ], spacing=8),
-            helper_text="どの言語間で翻訳するかを設定"
+            helper_text="60以上の言語に対応。リストにない言語も直接入力可能"
         )
 
         self.translator_dropdown = ft.Dropdown(
@@ -407,6 +566,16 @@ class SettingsDialog:
             padding=10,
         )
 
+    def _on_lang_dropdown_change(self, which: str):
+        """言語ドロップダウン変更時のハンドラ"""
+        if which == "home":
+            is_custom = self.home_lang_dropdown.value == "custom"
+            self.home_lang_custom_container.visible = is_custom
+        else:
+            is_custom = self.other_lang_dropdown.value == "custom"
+            self.other_lang_custom_container.visible = is_custom
+        self.page.update()
+
     def _apply_preset(self, preset_name: str):
         """言語プリセットを適用"""
         presets = {
@@ -418,6 +587,8 @@ class SettingsDialog:
             home, other = presets[preset_name]
             self.home_lang_dropdown.value = home
             self.other_lang_dropdown.value = other
+            self.home_lang_custom_container.visible = False
+            self.other_lang_custom_container.visible = False
             self.page.update()
 
     def _create_filter_tab(self) -> ft.Container:
@@ -729,10 +900,20 @@ class SettingsDialog:
         """更新された設定を取得"""
         updated = self.config.copy()
 
-        # 基本設定
+        # プラットフォーム設定
+        updated["platform"] = self.platform_dropdown.value
+
+        # Twitch設定
         updated["twitch_channel"] = self.channel_field.value
         updated["trans_username"] = self.username_field.value
         updated["trans_oauth"] = self.oauth_field.value
+
+        # YouTube設定
+        youtube_input = self.youtube_video_id_field.value.strip()
+        # URLから動画IDを抽出
+        updated["youtube_video_id"] = self._extract_youtube_video_id(youtube_input)
+
+        # 表示設定
         updated["trans_text_color"] = self.color_dropdown.value
         updated["show_by_name"] = self.show_name_checkbox.value
         updated["show_by_lang"] = self.show_lang_checkbox.value
@@ -740,9 +921,17 @@ class SettingsDialog:
         updated["auto_start"] = self.auto_start_checkbox.value
         updated["view_only_mode"] = self.view_only_checkbox.value
 
-        # 翻訳設定
-        updated["lang_trans_to_home"] = self.home_lang_dropdown.value
-        updated["lang_home_to_other"] = self.other_lang_dropdown.value
+        # 翻訳設定（カスタム言語対応）
+        if self.home_lang_dropdown.value == "custom":
+            updated["lang_trans_to_home"] = self.home_lang_custom_field.value.strip() or "ja"
+        else:
+            updated["lang_trans_to_home"] = self.home_lang_dropdown.value
+
+        if self.other_lang_dropdown.value == "custom":
+            updated["lang_home_to_other"] = self.other_lang_custom_field.value.strip() or "en"
+        else:
+            updated["lang_home_to_other"] = self.other_lang_dropdown.value
+
         updated["translator"] = self.translator_dropdown.value
         updated["google_translate_suffix"] = self.google_suffix_dropdown.value
         updated["deepl_api_key"] = self.deepl_key_field.value
@@ -774,6 +963,35 @@ class SettingsDialog:
         updated["window_height"] = int(self.window_height_field.value) if self.window_height_field.value.isdigit() else 800
 
         return updated
+
+    def _extract_youtube_video_id(self, input_str: str) -> str:
+        """YouTubeのURLまたは動画IDから動画IDを抽出"""
+        import re
+
+        if not input_str:
+            return ""
+
+        # すでに動画IDの形式（11文字の英数字と_-）の場合
+        if re.match(r'^[\w-]{11}$', input_str):
+            return input_str
+
+        # 様々なYouTube URL形式から動画IDを抽出
+        patterns = [
+            r'(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/embed/|youtube\.com/v/|youtube\.com/live/)([^\s&?]+)',
+            r'[?&]v=([^\s&]+)',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, input_str)
+            if match:
+                video_id = match.group(1)
+                # 動画IDは通常11文字
+                if len(video_id) >= 11:
+                    return video_id[:11]
+                return video_id
+
+        # マッチしない場合は入力をそのまま返す
+        return input_str
 
     def _apply(self, e):
         """適用ボタン"""

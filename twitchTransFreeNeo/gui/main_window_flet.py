@@ -9,10 +9,12 @@ from datetime import datetime
 try:
     from ..utils.config_manager import ConfigManager
     from ..core.chat_monitor import ChatMonitor, ChatMessage
+    from ..core.youtube_chat_monitor import YouTubeChatMonitor, PYTCHAT_AVAILABLE
     from .settings_dialog import SettingsDialog
 except ImportError:
     from twitchTransFreeNeo.utils.config_manager import ConfigManager
     from twitchTransFreeNeo.core.chat_monitor import ChatMonitor, ChatMessage
+    from twitchTransFreeNeo.core.youtube_chat_monitor import YouTubeChatMonitor, PYTCHAT_AVAILABLE
     from twitchTransFreeNeo.gui.settings_dialog import SettingsDialog
 
 class MainWindow:
@@ -21,17 +23,20 @@ class MainWindow:
     def __init__(self):
         self.config_manager = ConfigManager()
         self.chat_monitor: Optional[ChatMonitor] = None
+        self.youtube_monitor: Optional[YouTubeChatMonitor] = None
         self.is_connected = False
         self.page: Optional[ft.Page] = None
 
         # UI要素の参照
         self.connect_button: Optional[ft.ElevatedButton] = None
+        self.platform_indicator: Optional[ft.Container] = None
         self.channel_text: Optional[ft.Text] = None
         self.bot_text: Optional[ft.Text] = None
         self.chat_list: Optional[ft.ListView] = None
         self.search_field: Optional[ft.TextField] = None
         self.lang_filter: Optional[ft.Dropdown] = None
         self.status_text: Optional[ft.Text] = None
+        self.status_icon: Optional[ft.Icon] = None
         self.total_messages_text: Optional[ft.Text] = None
         self.translated_messages_text: Optional[ft.Text] = None
         self.log_text: Optional[ft.Text] = None
@@ -104,12 +109,16 @@ class MainWindow:
         config = self.config_manager.get_all()
         channel = config.get("twitch_channel", "")
         bot_user = config.get("trans_username", "")
+        platform = config.get("platform", "twitch")
 
         self.connect_button = ft.ElevatedButton(
             "接続開始",
             icon=ft.Icons.PLAY_ARROW,
             on_click=self._toggle_connection,
         )
+
+        # プラットフォームインジケーター
+        self.platform_indicator = self._create_platform_indicator(platform)
 
         self.channel_text = ft.Text(
             channel if channel else "未設定",
@@ -123,6 +132,7 @@ class MainWindow:
 
         return ft.Container(
             content=ft.Row([
+                self.platform_indicator,
                 self.connect_button,
                 ft.ElevatedButton("設定", icon=ft.Icons.SETTINGS, on_click=self._open_settings),
                 ft.ElevatedButton("診断", icon=ft.Icons.TROUBLESHOOT, on_click=self._open_diagnostics),
@@ -137,6 +147,41 @@ class MainWindow:
             ], spacing=10),
             padding=10,
         )
+
+    def _create_platform_indicator(self, platform: str) -> ft.Container:
+        """プラットフォームインジケーターを作成"""
+        if platform == "youtube":
+            return ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.SMART_DISPLAY, color=ft.Colors.WHITE, size=16),
+                    ft.Text("YouTube", color=ft.Colors.WHITE, size=12, weight=ft.FontWeight.BOLD),
+                ], spacing=4),
+                bgcolor=ft.Colors.RED_700,
+                padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                border_radius=4,
+            )
+        elif platform == "both":
+            return ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.LIVE_TV, color=ft.Colors.WHITE, size=14),
+                    ft.Text("+", color=ft.Colors.WHITE, size=12),
+                    ft.Icon(ft.Icons.SMART_DISPLAY, color=ft.Colors.WHITE, size=14),
+                    ft.Text("同時配信", color=ft.Colors.WHITE, size=11, weight=ft.FontWeight.BOLD),
+                ], spacing=2),
+                bgcolor=ft.Colors.PURPLE_700,
+                padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                border_radius=4,
+            )
+        else:  # twitch
+            return ft.Container(
+                content=ft.Row([
+                    ft.Icon(ft.Icons.LIVE_TV, color=ft.Colors.WHITE, size=16),
+                    ft.Text("Twitch", color=ft.Colors.WHITE, size=12, weight=ft.FontWeight.BOLD),
+                ], spacing=4),
+                bgcolor=ft.Colors.PURPLE_500,
+                padding=ft.padding.symmetric(horizontal=8, vertical=4),
+                border_radius=4,
+            )
 
     def _create_chat_area(self) -> ft.Container:
         """チャット表示エリア作成"""
@@ -252,41 +297,99 @@ class MainWindow:
 
     async def _connect(self):
         """接続開始"""
-        # 設定確認
-        valid, errors = self.config_manager.is_valid_config()
+        config = self.config_manager.get_all()
+        platform = config.get("platform", "twitch")
+
+        # プラットフォームに応じた設定確認
+        valid, errors = self._validate_config_for_platform(platform)
         if not valid:
             await self._show_error_dialog("設定エラー", "\n".join(errors))
             return
 
         try:
-            # チャット監視開始
-            config = self.config_manager.get_all()
-            self.chat_monitor = ChatMonitor(config, self._on_message_received)
+            twitch_success = True
+            youtube_success = True
+            status_parts = []
 
-            success, error_msg = await self.chat_monitor.start()
-            if success:
+            # Twitch接続（twitch または both の場合）
+            if platform in ["twitch", "both"]:
+                self.chat_monitor = ChatMonitor(config, self._on_message_received)
+                success, error_msg = await self.chat_monitor.start()
+                if success:
+                    channel = config.get("twitch_channel", "")
+                    status_parts.append(f"Twitch: {channel}")
+                    self._log_message(f"Twitchチャンネル '{channel}' に接続しました")
+                else:
+                    twitch_success = False
+                    self._log_message(f"Twitch接続エラー: {error_msg}")
+                    if platform == "twitch":
+                        await self._show_error_dialog("接続エラー", error_msg or "Twitchへの接続に失敗しました")
+                        return
+
+            # YouTube接続（youtube または both の場合）
+            if platform in ["youtube", "both"]:
+                if not PYTCHAT_AVAILABLE:
+                    youtube_success = False
+                    self._log_message("YouTube接続エラー: pytchatが利用できません")
+                    if platform == "youtube":
+                        await self._show_error_dialog("接続エラー", "pytchatライブラリが利用できません")
+                        return
+                else:
+                    self.youtube_monitor = YouTubeChatMonitor(config, self._on_message_received)
+                    if self.youtube_monitor.start():
+                        video_id = config.get("youtube_video_id", "")
+                        status_parts.append(f"YouTube: {video_id}")
+                        self._log_message(f"YouTube Live '{video_id}' に接続しました")
+                    else:
+                        youtube_success = False
+                        self._log_message("YouTube接続エラー: 接続に失敗しました")
+                        if platform == "youtube":
+                            await self._show_error_dialog("接続エラー", "YouTube Liveへの接続に失敗しました")
+                            return
+
+            # 少なくとも1つ成功していれば接続状態とする
+            if twitch_success or youtube_success:
                 self.is_connected = True
-                channel = self.config_manager.get("twitch_channel")
-
-                # UI更新
                 self.connect_button.text = "接続停止"
                 self.connect_button.icon = ft.Icons.STOP
-                self.status_text.value = f"接続中: {channel}"
+                self.status_text.value = f"接続中: {', '.join(status_parts)}"
                 self.status_text.color = ft.Colors.GREEN
-                self._log_message(f"チャンネル '{channel}' に接続しました")
                 self.page.update()
             else:
-                # 詳細なエラーメッセージを表示
-                await self._show_error_dialog("接続エラー", error_msg if error_msg else "Twitchチャンネルへの接続に失敗しました")
+                await self._show_error_dialog("接続エラー", "すべてのプラットフォームへの接続に失敗しました")
 
         except Exception as e:
             await self._show_error_dialog("接続エラー", f"接続中にエラーが発生しました: {e}")
 
+    def _validate_config_for_platform(self, platform: str) -> tuple:
+        """プラットフォームに応じた設定確認"""
+        errors = []
+        config = self.config_manager.get_all()
+
+        if platform in ["twitch", "both"]:
+            if not config.get("twitch_channel"):
+                errors.append("Twitchチャンネル名が設定されていません")
+            if not config.get("trans_oauth") and not config.get("view_only_mode", False):
+                errors.append("OAuthトークンが設定されていません（表示のみモードでない場合）")
+
+        if platform in ["youtube", "both"]:
+            if not config.get("youtube_video_id"):
+                errors.append("YouTube動画IDが設定されていません")
+
+        return (len(errors) == 0, errors)
+
     async def _disconnect(self):
         """接続停止"""
         try:
+            # Twitchモニターを停止
             if self.chat_monitor:
                 self.chat_monitor.stop()
+                self.chat_monitor = None
+
+            # YouTubeモニターを停止
+            if self.youtube_monitor:
+                self.youtube_monitor.stop()
+                self.youtube_monitor = None
 
             self.is_connected = False
             self.connect_button.text = "接続開始"
