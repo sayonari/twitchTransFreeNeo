@@ -9,28 +9,26 @@ import deepl
 
 class TranslationEngine:
     """翻訳エンジン統合クラス"""
-    
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.google_translator = None
+        self.google_available = False
         self.deepl_translator = None
         self._init_translators()
-    
+
     def _init_translators(self):
         """翻訳エンジンを初期化"""
         try:
-            # Google Translator (deep-translatorはインスタンスを保持せず、毎回作成する)
-            self.google_translator = True  # 初期化成功フラグ
-            print("Google翻訳エンジンを初期化しました")
+            # Google Translator（deep-translatorは毎回インスタンスを作成するため、利用可能フラグのみ保持）
+            self.google_available = True
 
-            # DeepL Translator (API キーがある場合のみ)
+            # DeepL Translator（APIキーがある場合のみ）
             deepl_api_key = self.config.get("deepl_api_key", "")
             if deepl_api_key:
                 self.deepl_translator = deepl.Translator(deepl_api_key)
-                print("DeepL翻訳エンジンを初期化しました")
         except Exception as e:
             print(f"翻訳エンジン初期化エラー: {e}")
-            self.google_translator = None
+            self.google_available = False
             self.deepl_translator = None
     
     async def detect_language(self, text: str) -> Optional[str]:
@@ -39,10 +37,10 @@ class TranslationEngine:
             from deep_translator import single_detection
 
             # Google翻訳エンジンが初期化されていない場合は再初期化
-            if not self.google_translator:
+            if not self.google_available:
                 self._init_translators()
 
-            if not self.google_translator:
+            if not self.google_available:
                 print("言語検出エラー: Google翻訳エンジンが初期化できません")
                 return None
 
@@ -76,7 +74,7 @@ class TranslationEngine:
         """テキスト翻訳"""
         try:
             # Google翻訳エンジンが初期化されていない場合は再初期化
-            if not self.google_translator:
+            if not self.google_available:
                 self._init_translators()
                 
             translator_type = self.config.get("translator", "google")
@@ -97,10 +95,10 @@ class TranslationEngine:
     async def _translate_with_google(self, text: str, target_lang: str) -> Optional[str]:
         """Google翻訳 (deep-translatorを使用)"""
         try:
-            if not self.google_translator:
+            if not self.google_available:
                 self._init_translators()
 
-            if not self.google_translator:
+            if not self.google_available:
                 print("Google翻訳エラー: 翻訳エンジンが初期化できません")
                 return None
 

@@ -26,28 +26,9 @@ try:
     from .database import TranslationDatabase
     from .tts import TTSEngine
 except ImportError:
-    try:
-        from twitchTransFreeNeo.core.translator import TranslationEngine, LanguageDetector
-        from twitchTransFreeNeo.core.database import TranslationDatabase
-        from twitchTransFreeNeo.core.tts import TTSEngine
-    except ImportError:
-        # フォールバック用のダミークラス
-        class TranslationEngine:
-            def __init__(self, *args, **kwargs): pass
-            async def translate(self, *args, **kwargs): return ""
-        
-        class LanguageDetector:
-            def __init__(self, *args, **kwargs): pass
-            def detect(self, *args, **kwargs): return "unknown"
-        
-        class TranslationDatabase:
-            def __init__(self, *args, **kwargs): pass
-            async def save_translation(self, *args, **kwargs): return True
-            async def get_translation(self, *args, **kwargs): return None
-        
-        class TTSEngine:
-            def __init__(self, *args, **kwargs): pass
-            async def speak(self, *args, **kwargs): pass
+    from twitchTransFreeNeo.core.translator import TranslationEngine, LanguageDetector
+    from twitchTransFreeNeo.core.database import TranslationDatabase
+    from twitchTransFreeNeo.core.tts import TTSEngine
 
 class ChatMessage:
     """チャットメッセージクラス"""
@@ -458,79 +439,23 @@ if TWITCHIO_AVAILABLE:
     
         def stop_bot(self):
             """ボット停止"""
-            print(f"ボット停止開始: is_running={self.is_running}")
             self.is_running = False
-            
+
             # TTSエンジンを停止
             if hasattr(self, 'tts_engine'):
                 self.tts_engine.stop()
-                print("TTS停止完了")
-            
-            # WebSocket接続を適切に閉じる
+
+            # イベントループが実行中の場合のみ非同期クローズを試行
             try:
-                print("WebSocket接続の停止を試行中...")
-                
-                # 現在のイベントループを取得
-                try:
-                    loop = asyncio.get_running_loop()
-                    is_running = True
-                except RuntimeError:
-                    loop = None
-                    is_running = False
-                    print("イベントループが実行されていません")
-                
-                # TwitchIOの内部状態をチェック
-                if hasattr(self, '_ws') and self._ws:
-                    print("WebSocket接続が見つかりました、停止中...")
-                    try:
-                        if is_running:
-                            asyncio.create_task(self._ws.close())
-                        else:
-                            # イベントループが実行されていない場合は直接クローズを試みる
-                            if asyncio.iscoroutinefunction(self._ws.close):
-                                pass  # コルーチンは実行できないのでスキップ
-                    except:
-                        pass
-                
-                if hasattr(self, '_connection') and self._connection:
-                    print("内部接続オブジェクトが見つかりました、停止中...")
-                    try:
-                        if hasattr(self._connection, 'close'):
-                            if is_running:
-                                asyncio.create_task(self._connection.close())
-                        elif hasattr(self._connection, '_websocket') and self._connection._websocket:
-                            if is_running:
-                                asyncio.create_task(self._connection._websocket.close())
-                    except:
-                        pass
-                        
-                # ボット自体を停止
+                loop = asyncio.get_running_loop()
                 if hasattr(self, 'close'):
-                    print("ボットクローズメソッド実行中...")
-                    if is_running:
-                        asyncio.create_task(self.close())
-                
-                # 強制的にイベントループから切り離し
-                if hasattr(self, '_loop') and self._loop:
-                    print("イベントループ停止中...")
-                    try:
-                        self._loop.call_soon_threadsafe(lambda: print("ループ停止シグナル送信"))
-                    except:
-                        pass
-                        
-            except Exception as e:
-                print(f"ボット停止時のエラー: {e}")
-            
-            print(f"ボット停止完了: is_running={self.is_running}")
-            
-            # 完全に停止させるため、すべての内部状態をクリア
-            try:
-                self._ws = None
-                self._connection = None
-                if hasattr(self, 'user'):
-                    self.user = None
-            except:
-                pass
+                    asyncio.create_task(self.close())
+            except RuntimeError:
+                pass  # イベントループが実行されていない場合はスキップ
+
+            # 内部状態をクリア
+            self._ws = None
+            self._connection = None
 
 class ChatMonitor:
     """チャット監視統合クラス"""

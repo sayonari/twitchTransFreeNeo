@@ -1,6 +1,6 @@
 [project]
 name = "twitchTransFreeNeo"
-version = "0.2.8-beta"
+version = "0.2.9-beta"
 description = "Next Generation Twitch Chat Translator - GUI版Twitchチャット翻訳ツール（Flet版）"
 authors = [
     {name = "sayonari"}
@@ -23,7 +23,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "nuitka>=2.0",
     "pyinstaller>=6.0",
 ]
 
@@ -33,7 +32,6 @@ build-backend = "hatchling.build"
 
 [tool.uv]
 dev-dependencies = [
-    "nuitka>=2.0",
     "pyinstaller>=6.0",
 ]
 

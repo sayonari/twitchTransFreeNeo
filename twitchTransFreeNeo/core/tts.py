@@ -8,50 +8,25 @@ import os
 import queue
 import threading
 import platform
+import subprocess
 import sys
 from typing import Dict, Any, Optional
 
-# Check if we're on macOS
-is_macos = platform.system() == 'Darwin'
+# プラットフォーム検出
+IS_MACOS = platform.system() == 'Darwin'
+IS_WINDOWS = platform.system() == 'Windows'
+IS_LINUX = platform.system() == 'Linux'
 
-# Nuitka/PyInstallerバイナリ実行時の検出（Nuitka onefileモード対応）
-exe_path = sys.executable
-is_frozen = (
-    getattr(sys, 'frozen', False) or
-    hasattr(sys, '__compiled__') or
-    '__compiled__' in sys.modules or
-    '/tmp/' in exe_path or  # Linux/macOS一時ディレクトリ
-    '/var/folders/' in exe_path  # macOS一時ディレクトリ
-)
+# PyInstallerバイナリ実行時の検出
+IS_FROZEN = getattr(sys, 'frozen', False)
 
-# Try to import pygame
+# pygame利用可能チェック
 try:
     import pygame
-    pygame_available = True
+    PYGAME_AVAILABLE = True
 except ImportError:
-    pygame_available = False
+    PYGAME_AVAILABLE = False
 
-# macOS かつ バイナリ実行時は、afplayを直接使用する関数を定義
-if is_macos and is_frozen:
-    def play_with_afplay(sound_file, block=True):
-        """macOS Nuitkaバイナリ用の音声再生"""
-        if not os.path.exists(sound_file):
-            print(f"Sound file not found: {sound_file}")
-            return False
-
-        cmd = f"afplay '{sound_file}'"
-        if block:
-            result = os.system(cmd)
-            return result == 0
-        else:
-            threading.Thread(target=os.system, args=(cmd,)).start()
-            return True
-
-    print(f"macOS Nuitkaバイナリモード: afplayを使用します (exe_path: {exe_path})")
-else:
-    play_with_afplay = None
-    if is_macos:
-        print(f"macOS通常モード (is_frozen={is_frozen}, exe_path: {exe_path})")
 
 class TTSEngine:
     """
@@ -65,41 +40,26 @@ class TTSEngine:
         self.synth_queue = queue.Queue()
         self.is_running = False
         self.thread_voice: Optional[threading.Thread] = None
+        self.tmp_dir = self._setup_tmp_dir()
 
-        # tmpディレクトリを作成
-        # App Translocationによる読み取り専用問題を回避するため、
-        # システムの一時ディレクトリまたはユーザーホームディレクトリを使用
-        import tempfile
-
-        if is_frozen:
+    def _setup_tmp_dir(self) -> str:
+        """一時ディレクトリを設定"""
+        if IS_FROZEN:
             # ビルドされた実行ファイルの場合はユーザーホームディレクトリを使用
             # （macOSのApp Translocation対策）
             home_dir = os.path.expanduser("~")
-            self.tmp_dir = os.path.join(home_dir, ".twitchTransFreeNeo", "tmp")
+            tmp_dir = os.path.join(home_dir, ".twitchTransFreeNeo", "tmp")
         else:
             # 開発環境ではプロジェクトディレクトリのtmpを使用
-            base_dir = os.getcwd()
-            self.tmp_dir = os.path.join(base_dir, "tmp")
+            tmp_dir = os.path.join(os.getcwd(), "tmp")
 
-        # ディレクトリが存在しない場合は作成
-        if not os.path.exists(self.tmp_dir):
-            os.makedirs(self.tmp_dir, exist_ok=True)
-
-        if self.config.get("debug", False):
-            print(f"TTS tmp directory: {self.tmp_dir}")
+        os.makedirs(tmp_dir, exist_ok=True)
+        return tmp_dir
 
     def put(self, text: str, lang: str):
         """TTS読み上げキューに追加"""
         if self.is_enabled():
-            if self.config.get("debug", False):
-                print(f"TTS Engine: Adding to queue - text='{text[:30]}...', lang={lang}")
-                print(f"TTS Engine: Queue size before: {self.synth_queue.qsize()}")
             self.synth_queue.put([text, lang])
-            if self.config.get("debug", False):
-                print(f"TTS Engine: Queue size after: {self.synth_queue.qsize()}")
-        else:
-            if self.config.get("debug", False):
-                print("TTS Engine: TTS is disabled, not adding to queue")
 
     def is_enabled(self) -> bool:
         """TTSが有効かどうかをチェック"""
@@ -108,7 +68,6 @@ class TTSEngine:
     def start(self):
         """TTSスレッドを開始"""
         if self.is_enabled() and not self.is_running:
-            print("TTS音声合成スレッドを開始します...")
             self.is_running = True
             self.thread_voice = threading.Thread(target=self.voice_synth, daemon=True)
             self.thread_voice.start()
@@ -116,23 +75,19 @@ class TTSEngine:
     def stop(self):
         """TTSスレッドを停止"""
         if self.is_running:
-            print("TTS音声合成スレッドを停止します...")
             self.is_running = False
-            # 停止シグナルを送信
-            self.synth_queue.put(None)
+            self.synth_queue.put(None)  # 停止シグナル
 
     def shorten_tts_comment(self, comment: str) -> str:
         """TTS向けのコメントをコンフィグに応じて短縮する"""
         maxlen = self.config.get("tts_text_max_length", 40)
-        if maxlen == 0:
-            return comment
-        if len(comment) <= maxlen:
+        if maxlen == 0 or len(comment) <= maxlen:
             return comment
         omit_message = self.config.get("tts_message_for_omitting", "...")
-        return f"{comment[0:maxlen]} {omit_message}"
+        return f"{comment[:maxlen]} {omit_message}"
 
     def cevio_play(self, cast: str):
-        """CeVIOを呼び出すための関数を生成する関数（Windows専用）"""
+        """CeVIOを呼び出すための関数を生成（Windows専用）"""
         try:
             import win32com.client
             import pythoncom
@@ -141,17 +96,13 @@ class TTSEngine:
             cevio.StartHost(False)
             talker = win32com.client.Dispatch("CeVIO.Talk.RemoteService2.Talker2V40")
             talker.Cast = cast
-            
+
             def play(text, _):
                 try:
                     state = talker.Speak(text)
-                    if self.config.get("debug", False): 
-                        print(f"text '{text}' has dispatched to CeVIO.")
                     state.Wait()
                 except Exception as e:
-                    print('CeVIO error: TTS sound is not generated...')
-                    if self.config.get("debug", False): 
-                        print(e.args)
+                    print(f'CeVIO error: {e}')
             return play
         except ImportError:
             print("CeVIO is not available on this platform")
@@ -161,219 +112,152 @@ class TTSEngine:
         """gTTSを利用して音声合成・再生・削除を行う"""
         tts_file = None
         try:
-            # 音声合成段階
-            if self.config.get("debug", False):
-                print(f"TTS: Starting synthesis for text='{text}', lang='{lang}'")
-            
-            tts = gTTS(text, lang=lang)
-            tts_file = os.path.join(self.tmp_dir, f'cnt_{datetime.now().microsecond}.mp3')
-            
-            if self.config.get("debug", False): 
-                print(f'TTS: Saving to file: {tts_file}')
-            
-            tts.save(tts_file)
-            
-            # ファイルが正常に作成されたかチェック
-            if not os.path.exists(tts_file):
-                print(f"TTS error: File was not created: {tts_file}")
+            # 音声合成
+            tts_file = self._synthesize_audio(text, lang)
+            if not tts_file:
                 return
-                
-            file_size = os.path.getsize(tts_file)
-            if self.config.get("debug", False):
-                print(f"TTS: File created successfully: {tts_file} (size: {file_size} bytes)")
-            
-            if file_size == 0:
-                print(f"TTS error: Empty file created: {tts_file}")
-                return
-            
-            # 音声再生段階 - プラットフォーム別に最適な方法を選択
-            play_success = False
 
-            # macOSでは常に最初にafplayを使用（バイナリ/通常実行問わず）
-            if is_macos:
-                # Nuitkaバイナリの場合は専用関数を使用
-                if is_frozen and play_with_afplay:
-                    try:
-                        if self.config.get("debug", False):
-                            print(f"TTS: Using afplay for macOS Nuitka binary")
-                        play_success = play_with_afplay(tts_file, block=True)
-                        if play_success and self.config.get("debug", False):
-                            print("TTS: afplay completed successfully")
-                    except Exception as afplay_error:
-                        print(f'TTS afplay error: {afplay_error}')
-                        if self.config.get("debug", False):
-                            import traceback
-                            traceback.print_exc()
+            # 音声再生
+            self._play_audio(tts_file)
 
-                # 通常のPython実行時もafplayを使用
-                if not play_success:
-                    try:
-                        # デバッグ情報を強化
-                        print(f"TTS: Using afplay for macOS")
-                        print(f"TTS: File path: {tts_file}")
-                        print(f"TTS: File exists: {os.path.exists(tts_file)}")
-                        if os.path.exists(tts_file):
-                            print(f"TTS: File size: {os.path.getsize(tts_file)} bytes")
-                            # 絶対パスを使用
-                            abs_path = os.path.abspath(tts_file)
-                            print(f"TTS: Absolute path: {abs_path}")
-
-                            # subprocessを使用してより詳細なエラー情報を取得
-                            import subprocess
-                            try:
-                                result = subprocess.run(['afplay', abs_path],
-                                                      capture_output=True,
-                                                      text=True,
-                                                      timeout=10)
-                                if result.returncode == 0:
-                                    play_success = True
-                                    print("TTS: afplay completed successfully")
-                                else:
-                                    print(f"TTS warning: afplay failed with code {result.returncode}")
-                                    if result.stderr:
-                                        print(f"TTS stderr: {result.stderr}")
-                            except subprocess.TimeoutExpired:
-                                print("TTS error: afplay timeout")
-                            except FileNotFoundError:
-                                print("TTS error: afplay command not found")
-                                # フォールバック: os.systemを試す
-                                result = os.system(f"afplay '{abs_path}'")
-                                if result == 0:
-                                    play_success = True
-                        else:
-                            print(f"TTS error: File does not exist: {tts_file}")
-                    except Exception as afplay_error:
-                        print(f'TTS afplay error: {afplay_error}')
-                        import traceback
-                        traceback.print_exc()
-            
-            # Method 1: pygame (高い優先度、クロスプラットフォーム対応)
-            if pygame_available and not play_success:
-                try:
-                    if self.config.get("debug", False):
-                        print(f"TTS: Attempting pygame: {tts_file}")
-                    pygame.mixer.init()
-                    pygame.mixer.music.load(tts_file)
-                    pygame.mixer.music.play()
-                    
-                    # Wait for playback to complete
-                    while pygame.mixer.music.get_busy():
-                        time.sleep(0.1)
-                    
-                    pygame.mixer.quit()
-                    if self.config.get("debug", False):
-                        print("TTS: Pygame completed successfully")
-                    play_success = True
-                except Exception as play_error:
-                    print(f'TTS pygame error: {play_error}')
-                    if self.config.get("debug", False):
-                        import traceback
-                        traceback.print_exc()
-                    try:
-                        pygame.mixer.quit()
-                    except:
-                        pass
-            
-            # Method 2: Other system-specific commands (Windows/Linux)
-            if not play_success:
-                try:
-                    if platform.system() == 'Windows':
-                        if self.config.get("debug", False):
-                            print(f"TTS: Attempting Windows winsound: {tts_file}")
-                        import winsound
-                        winsound.PlaySound(tts_file, winsound.SND_FILENAME)
-                        play_success = True
-                    elif platform.system() == 'Linux':
-                        if self.config.get("debug", False):
-                            print(f"TTS: Attempting Linux audio commands: {tts_file}")
-                        # Try aplay first, then paplay
-                        result = os.system(f"aplay '{tts_file}' 2>/dev/null")
-                        if result != 0:
-                            result = os.system(f"paplay '{tts_file}' 2>/dev/null")
-                        if result == 0:
-                            play_success = True
-                        else:
-                            print(f"TTS warning: Linux audio commands failed")
-                except Exception as sys_error:
-                    print(f'TTS system playback error: {sys_error}')
-                    if self.config.get("debug", False):
-                        import traceback
-                        traceback.print_exc()
-            
-            if not play_success:
-                print('TTS error: All playback methods failed')
-                if not pygame_available:
-                    print("TTS info: pygame not available (recommended: uv add pygame)")
-            
-        except Exception as synthesis_error:
-            print(f'TTS synthesis error: {synthesis_error}')
-            if self.config.get("debug", False):
-                import traceback
-                traceback.print_exc()
-        
+        except Exception as e:
+            print(f'TTS synthesis error: {e}')
         finally:
-            # ファイル削除（必ず実行）
-            if tts_file and os.path.exists(tts_file):
-                try:
-                    os.remove(tts_file)
-                    if self.config.get("debug", False):
-                        print(f"TTS: File deleted successfully: {tts_file}")
-                except Exception as delete_error:
-                    print(f"TTS file deletion error: {delete_error}")
+            self._cleanup_file(tts_file)
+
+    def _synthesize_audio(self, text: str, lang: str) -> Optional[str]:
+        """gTTSで音声ファイルを生成"""
+        tts = gTTS(text, lang=lang)
+        tts_file = os.path.join(self.tmp_dir, f'tts_{datetime.now().microsecond}.mp3')
+        tts.save(tts_file)
+
+        if not os.path.exists(tts_file) or os.path.getsize(tts_file) == 0:
+            print(f"TTS error: Failed to create audio file")
+            return None
+        return tts_file
+
+    def _play_audio(self, tts_file: str) -> bool:
+        """プラットフォーム別に音声を再生"""
+        # macOS: afplayを優先
+        if IS_MACOS:
+            if self._play_with_afplay(tts_file):
+                return True
+
+        # pygame（クロスプラットフォーム）
+        if PYGAME_AVAILABLE:
+            if self._play_with_pygame(tts_file):
+                return True
+
+        # Windows: winsound
+        if IS_WINDOWS:
+            if self._play_on_windows(tts_file):
+                return True
+
+        # Linux: aplay/paplay
+        if IS_LINUX:
+            if self._play_on_linux(tts_file):
+                return True
+
+        print('TTS error: All playback methods failed')
+        return False
+
+    def _play_with_afplay(self, tts_file: str) -> bool:
+        """macOSのafplayで再生"""
+        try:
+            abs_path = os.path.abspath(tts_file)
+            result = subprocess.run(
+                ['afplay', abs_path],
+                capture_output=True,
+                timeout=30
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def _play_with_pygame(self, tts_file: str) -> bool:
+        """pygameで再生"""
+        try:
+            pygame.mixer.init()
+            pygame.mixer.music.load(tts_file)
+            pygame.mixer.music.play()
+
+            while pygame.mixer.music.get_busy():
+                time.sleep(0.1)
+
+            pygame.mixer.quit()
+            return True
+        except Exception:
+            try:
+                pygame.mixer.quit()
+            except:
+                pass
+            return False
+
+    def _play_on_windows(self, tts_file: str) -> bool:
+        """Windowsのwinsoundで再生"""
+        try:
+            import winsound
+            winsound.PlaySound(tts_file, winsound.SND_FILENAME)
+            return True
+        except Exception:
+            return False
+
+    def _play_on_linux(self, tts_file: str) -> bool:
+        """Linuxのaplay/paplayで再生"""
+        try:
+            result = os.system(f"aplay '{tts_file}' 2>/dev/null")
+            if result != 0:
+                result = os.system(f"paplay '{tts_file}' 2>/dev/null")
+            return result == 0
+        except Exception:
+            return False
+
+    def _cleanup_file(self, tts_file: Optional[str]):
+        """一時ファイルを削除"""
+        if tts_file and os.path.exists(tts_file):
+            try:
+                os.remove(tts_file)
+            except Exception:
+                pass
 
     def determine_tts(self):
         """どのTextToSpeechを利用するかをconfigから選択して再生用の関数を返す"""
         kind = self.config.get("tts_kind", "gTTS").strip().upper()
-        if kind == "CEVIO" and platform.system() == 'Windows':
+        if kind == "CEVIO" and IS_WINDOWS:
             cast = self.config.get("cevio_cast", "さとうささら")
             return self.cevio_play(cast)
-        else:
-            return self.gtts_play
+        return self.gtts_play
 
     def voice_synth(self):
         """音声合成(TTS)の待ち受けスレッド"""
         tts_func = self.determine_tts()
-        
+
         while self.is_running:
             try:
                 q = self.synth_queue.get(timeout=1)
                 if q is None:  # 停止シグナル
                     break
-                    
-                text = q[0]
-                lang = q[1]
 
-                if self.config.get("debug", False): 
-                    print(f'TTS Debug: text="{text}", lang="{lang}"')
+                text, lang = q[0], q[1]
 
                 # 読み上げ対象言語のフィルタリング
                 read_only_langs = self.config.get("read_only_these_lang", [])
                 if read_only_langs and lang not in read_only_langs:
-                    if self.config.get("debug", False): 
-                        print(f'TTS Skip: language "{lang}" not in read_only_these_lang')
                     continue
 
-                # テキストを短縮
+                # テキストを短縮して音声合成実行
                 text = self.shorten_tts_comment(text)
-                
-                # 音声合成実行
                 tts_func(text, lang)
-                
+
             except queue.Empty:
                 continue
             except Exception as e:
                 print(f"TTS thread error: {e}")
-                if self.config.get("debug", False):
-                    import traceback
-                    traceback.print_exc()
-        
-        print("TTS音声合成スレッドが終了しました")
 
     def update_config(self, new_config: Dict[str, Any]):
         """設定を更新"""
         self.config.update(new_config)
-        
-        # TTS有効/無効が変わった場合の処理
+
         if self.is_enabled() and not self.is_running:
             self.start()
         elif not self.is_enabled() and self.is_running:
