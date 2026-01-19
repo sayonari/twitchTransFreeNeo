@@ -1,6 +1,6 @@
 [project]
 name = "twitchTransFreeNeo"
-version = "0.2.11-beta"
+version = "0.2.12-beta"
 description = "Next Generation Twitch Chat Translator - GUI版Twitchチャット翻訳ツール（Flet版）"
 authors = [
     {name = "sayonari"}

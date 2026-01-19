@@ -1403,7 +1403,7 @@ wheels = [
 
 [[package]]
 name = "twitchtransfreeneo"
-version = "0.2.8b0"
+version = "0.2.11b0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
