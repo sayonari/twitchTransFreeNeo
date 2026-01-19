@@ -12,10 +12,11 @@ __pycache__/
 .LSOverride
 
 # Icon must end with two \r (macOS custom icons)
-Icon
+# This catches Icon\r\r (the actual filename macOS creates)
+Icon*
 Icon?
-Icon[
-]*
+**/Icon*
+**/Icon?
 
 # Thumbnails
 ._*

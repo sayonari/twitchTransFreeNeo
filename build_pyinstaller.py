@@ -39,6 +39,13 @@ def build_macos(arch=None):
 
     version = get_version()
 
+    # アイコンファイルの確認（.icnsを優先、なければ.icoを使用）
+    icon_file = None
+    if Path("icon.icns").exists():
+        icon_file = "icon.icns"
+    elif Path("icon.ico").exists():
+        icon_file = "icon.ico"
+
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name=twitchTransFreeNeo",
@@ -50,6 +57,11 @@ def build_macos(arch=None):
         "--collect-data=certifi",  # SSL証明書をバンドル
         "run.py",
     ]
+
+    # アイコンがあれば追加
+    if icon_file:
+        cmd.insert(-1, f"--icon={icon_file}")
+        print(f"📎 アイコンファイル: {icon_file}")
 
     # アーキテクチャ指定（M1/Intel）
     if arch == "arm64":
@@ -75,6 +87,11 @@ def build_windows():
 
     version = get_version()
 
+    # アイコンファイルの確認
+    icon_file = None
+    if Path("icon.ico").exists():
+        icon_file = "icon.ico"
+
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name=twitchTransFreeNeo",
@@ -86,6 +103,11 @@ def build_windows():
         "--collect-data=certifi",  # SSL証明書をバンドル
         "run.py",
     ]
+
+    # アイコンがあれば追加
+    if icon_file:
+        cmd.insert(-1, f"--icon={icon_file}")
+        print(f"📎 アイコンファイル: {icon_file}")
 
     print(f"実行コマンド: {' '.join(cmd)}")
     result = subprocess.run(cmd)
@@ -105,6 +127,11 @@ def build_linux():
 
     version = get_version()
 
+    # アイコンファイルの確認（Linuxでは.desktopファイル用に使用可能）
+    icon_file = None
+    if Path("icon.ico").exists():
+        icon_file = "icon.ico"
+
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name=twitchTransFreeNeo",
@@ -115,6 +142,11 @@ def build_linux():
         "--collect-data=certifi",  # SSL証明書をバンドル
         "run.py",
     ]
+
+    # アイコンがあれば追加
+    if icon_file:
+        cmd.insert(-1, f"--icon={icon_file}")
+        print(f"📎 アイコンファイル: {icon_file}")
 
     print(f"実行コマンド: {' '.join(cmd)}")
     result = subprocess.run(cmd)
