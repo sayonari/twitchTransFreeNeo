@@ -9,11 +9,13 @@ from datetime import datetime, timedelta
 
 try:
     from ..utils.config_manager import ConfigManager
+    from ..utils.sound_manager import get_sound_manager, SoundManager
     from ..core.chat_monitor import ChatMonitor, ChatMessage
     from ..core.youtube_chat_monitor import YouTubeChatMonitor, PYTCHAT_AVAILABLE
     from .settings_dialog import SettingsDialog
 except ImportError:
     from twitchTransFreeNeo.utils.config_manager import ConfigManager
+    from twitchTransFreeNeo.utils.sound_manager import get_sound_manager, SoundManager
     from twitchTransFreeNeo.core.chat_monitor import ChatMonitor, ChatMessage
     from twitchTransFreeNeo.core.youtube_chat_monitor import YouTubeChatMonitor, PYTCHAT_AVAILABLE
     from twitchTransFreeNeo.gui.settings_dialog import SettingsDialog
@@ -65,6 +67,22 @@ class MainWindow:
         # ファイル保存用
         self.file_picker: Optional[ft.FilePicker] = None
 
+        # サウンド通知
+        self.sound_manager: SoundManager = get_sound_manager()
+
+        # お気に入りユーザー
+        self.favorite_users: List[str] = []
+
+        # ピン留めメッセージ
+        self.pinned_messages: List[ChatMessage] = []
+        self.pinned_container: Optional[ft.Container] = None
+
+        # OBSポップアウトウィンドウ用
+        self.obs_window_open = False
+
+        # クイック返信
+        self.quick_replies: List[str] = []
+
     def main(self, page: ft.Page):
         """メインエントリーポイント"""
         self.page = page
@@ -110,6 +128,20 @@ class MainWindow:
         """設定を読み込み"""
         self.config_manager.load_config()
 
+        # お気に入りユーザーを読み込み
+        self.favorite_users = self.config_manager.get("favorite_users", [])
+
+        # クイック返信を読み込み
+        self.quick_replies = self.config_manager.get("quick_replies", [
+            "こんにちは！ / Hello!",
+            "ありがとう！ / Thank you!",
+            "楽しんでね！ / Have fun!",
+        ])
+
+        # サウンド設定を読み込み
+        self.sound_manager.set_enabled(self.config_manager.get("sound_enabled", False))
+        self.sound_manager.set_volume(self.config_manager.get("sound_volume", 0.5))
+
     def _create_ui(self):
         """UI作成"""
         # ファイルピッカーを設定
@@ -126,6 +158,7 @@ class MainWindow:
                     ft.VerticalDivider(width=1),
                     self._create_info_panel(),
                 ], expand=True),
+                self._create_quick_reply_bar(),
                 ft.Divider(height=1),
                 self._create_status_bar(),
             ], spacing=0, expand=True)
@@ -169,6 +202,11 @@ class MainWindow:
                 ft.Text("翻訳bot:"),
                 self.bot_text,
                 ft.Container(expand=True),  # スペーサー
+                ft.IconButton(
+                    icon=ft.Icons.OPEN_IN_NEW,
+                    tooltip="OBS用ポップアウト",
+                    on_click=self._open_obs_window,
+                ),
                 ft.IconButton(
                     icon=ft.Icons.DARK_MODE,
                     tooltip="テーマ切り替え",
@@ -239,6 +277,15 @@ class MainWindow:
             on_change=self._apply_filters,
         )
 
+        # ピン留めコンテナ
+        self.pinned_container = ft.Container(
+            content=ft.Column([], spacing=5),
+            visible=False,
+            padding=10,
+            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.YELLOW),
+            border_radius=5,
+        )
+
         # チャットリスト
         self.chat_list = ft.ListView(
             expand=True,
@@ -253,6 +300,7 @@ class MainWindow:
                     self.search_field,
                     self.lang_filter,
                 ], spacing=10),
+                self.pinned_container,
                 ft.Divider(),
                 self.chat_list,
             ], expand=True),
@@ -358,12 +406,18 @@ class MainWindow:
         # アクションボタン
         action_buttons = ft.Row([
             ft.OutlinedButton(
+                "詳細統計",
+                icon=ft.Icons.BAR_CHART,
+                on_click=self._show_detailed_stats,
+                tooltip="詳細な統計情報を表示",
+            ),
+            ft.OutlinedButton(
                 "ログ出力",
                 icon=ft.Icons.DOWNLOAD,
                 on_click=self._export_log,
                 tooltip="翻訳ログをファイルに保存",
             ),
-        ], alignment=ft.MainAxisAlignment.CENTER)
+        ], alignment=ft.MainAxisAlignment.CENTER, spacing=8)
 
         return ft.Container(
             content=ft.Column([
@@ -383,6 +437,271 @@ class MainWindow:
         if self.chat_list:
             self.chat_list.auto_scroll = self.auto_scroll_enabled
         self._log_message(f"自動スクロール: {'オン' if self.auto_scroll_enabled else 'オフ'}")
+
+    def _create_quick_reply_bar(self) -> ft.Container:
+        """クイック返信バー作成"""
+        quick_reply_buttons = []
+
+        for reply_text in self.quick_replies[:5]:  # 最大5つまで表示
+            quick_reply_buttons.append(
+                ft.OutlinedButton(
+                    reply_text[:20] + "..." if len(reply_text) > 20 else reply_text,
+                    on_click=lambda e, text=reply_text: self._send_quick_reply(text),
+                    tooltip=reply_text,
+                )
+            )
+
+        return ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.QUICK_REPLY, size=16, color=ft.Colors.GREY_600),
+                ft.Text("クイック返信:", size=12, color=ft.Colors.GREY_600),
+                *quick_reply_buttons,
+                ft.Container(expand=True),
+                ft.IconButton(
+                    icon=ft.Icons.EDIT,
+                    icon_size=16,
+                    tooltip="クイック返信を編集",
+                    on_click=self._edit_quick_replies,
+                ),
+            ], spacing=5, scroll=ft.ScrollMode.AUTO),
+            padding=ft.padding.symmetric(horizontal=10, vertical=5),
+            bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.GREY),
+        )
+
+    def _send_quick_reply(self, text: str):
+        """クイック返信を送信"""
+        if not self.is_connected:
+            self._log_message("未接続のため送信できません")
+            return
+
+        # Twitchに送信
+        if self.chat_monitor and hasattr(self.chat_monitor, 'send_message'):
+            try:
+                self.chat_monitor.send_message(text)
+                self._log_message(f"送信: {text}")
+            except Exception as e:
+                self._log_message(f"送信エラー: {e}")
+
+        # YouTubeに送信
+        if self.youtube_monitor and self.youtube_monitor.can_post:
+            try:
+                success, error = self.youtube_monitor.auth_manager.send_message(
+                    self.youtube_monitor.live_chat_id, text
+                )
+                if not success:
+                    self._log_message(f"YouTube送信エラー: {error}")
+            except Exception as e:
+                self._log_message(f"YouTube送信エラー: {e}")
+
+    def _edit_quick_replies(self, e):
+        """クイック返信の編集ダイアログを開く"""
+        replies_text = ft.TextField(
+            label="クイック返信（1行に1つ）",
+            multiline=True,
+            min_lines=5,
+            max_lines=10,
+            value="\n".join(self.quick_replies),
+        )
+
+        def save_replies(e):
+            new_replies = [r.strip() for r in replies_text.value.split("\n") if r.strip()]
+            self.quick_replies = new_replies
+            self.config_manager.update({"quick_replies": new_replies})
+            self.config_manager.save_config()
+            self.page.close(dialog)
+            self._log_message("クイック返信を保存しました")
+            # UIを更新するには再構築が必要（簡易的にログのみ）
+
+        def close_dialog(e):
+            self.page.close(dialog)
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("クイック返信の編集"),
+            content=ft.Container(
+                content=replies_text,
+                width=400,
+            ),
+            actions=[
+                ft.TextButton("キャンセル", on_click=close_dialog),
+                ft.ElevatedButton("保存", on_click=save_replies),
+            ],
+        )
+        self.page.open(dialog)
+        self.page.update()
+
+    def _show_detailed_stats(self, e):
+        """詳細統計ダイアログを表示"""
+        def close_stats(e):
+            self.page.close(stats_dialog)
+
+        # 統計を計算
+        total_msgs = len(self.messages)
+        translated_msgs = sum(1 for m in self.messages if m.translation)
+        translation_rate = (translated_msgs / total_msgs * 100) if total_msgs > 0 else 0
+
+        # ユーザー別統計
+        user_counts = {}
+        for msg in self.messages:
+            user_counts[msg.user] = user_counts.get(msg.user, 0) + 1
+        top_users = sorted(user_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+        # 時間帯別統計（1時間ごと）
+        hour_counts = {}
+        for msg in self.messages:
+            hour = msg.timestamp.strftime("%H:00")
+            hour_counts[hour] = hour_counts.get(hour, 0) + 1
+
+        # 言語別統計（詳細）
+        lang_details = sorted(self.lang_stats.items(), key=lambda x: x[1], reverse=True)
+
+        # 接続時間
+        if self.connection_start_time:
+            elapsed = datetime.now() - self.connection_start_time
+            hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
+            minutes, seconds = divmod(remainder, 60)
+            connection_time = f"{hours}時間 {minutes}分 {seconds}秒"
+        else:
+            connection_time = "未接続"
+
+        # 統計コンテンツ作成
+        stats_content = ft.Column([
+            # 概要
+            ft.Container(
+                content=ft.Column([
+                    ft.Text("📊 概要", weight=ft.FontWeight.BOLD, size=16),
+                    ft.Row([
+                        ft.Column([
+                            ft.Text("総メッセージ数", size=11, color=ft.Colors.GREY),
+                            ft.Text(str(total_msgs), size=20, weight=ft.FontWeight.BOLD),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Column([
+                            ft.Text("翻訳済み", size=11, color=ft.Colors.GREY),
+                            ft.Text(str(translated_msgs), size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                        ft.Column([
+                            ft.Text("翻訳率", size=11, color=ft.Colors.GREY),
+                            ft.Text(f"{translation_rate:.1f}%", size=20, weight=ft.FontWeight.BOLD, color=ft.Colors.BLUE),
+                        ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                    ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
+                    ft.Text(f"接続時間: {connection_time}", size=12, color=ft.Colors.GREY_600),
+                ], spacing=8),
+                padding=15,
+                bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.PRIMARY),
+                border_radius=8,
+            ),
+
+        ], spacing=10, scroll=ft.ScrollMode.AUTO)
+
+        # 言語別統計を追加
+        lang_stats_controls = [ft.Text("🌐 言語別統計", weight=ft.FontWeight.BOLD, size=14)]
+        if lang_details:
+            for lang, count in lang_details[:8]:
+                pct = count / total_msgs * 100 if total_msgs > 0 else 0
+                lang_stats_controls.append(
+                    ft.Row([
+                        ft.Text(lang.upper(), width=50, weight=ft.FontWeight.BOLD),
+                        ft.ProgressBar(value=count / total_msgs if total_msgs > 0 else 0, width=150),
+                        ft.Text(f"{count} ({pct:.1f}%)", size=11),
+                    ], spacing=10)
+                )
+        else:
+            lang_stats_controls.append(ft.Text("データなし", color=ft.Colors.GREY))
+
+        stats_content.controls.append(
+            ft.Container(
+                content=ft.Column(lang_stats_controls, spacing=4),
+                padding=10,
+                bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.BLUE),
+                border_radius=8,
+            )
+        )
+
+        # アクティブユーザーを追加
+        user_stats_controls = [ft.Text("👥 アクティブユーザー TOP10", weight=ft.FontWeight.BOLD, size=14)]
+        if top_users:
+            for i, (user, count) in enumerate(top_users):
+                user_stats_controls.append(
+                    ft.Row([
+                        ft.Text(f"{i+1}.", width=25),
+                        ft.Text(user, expand=True),
+                        ft.Text(f"{count}件", color=ft.Colors.GREY),
+                    ])
+                )
+        else:
+            user_stats_controls.append(ft.Text("データなし", color=ft.Colors.GREY))
+
+        stats_content.controls.append(
+            ft.Container(
+                content=ft.Column(user_stats_controls, spacing=2),
+                padding=10,
+                bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.GREEN),
+                border_radius=8,
+            )
+        )
+
+        stats_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Row([
+                ft.Icon(ft.Icons.BAR_CHART, size=24),
+                ft.Text("詳細統計", weight=ft.FontWeight.BOLD),
+            ]),
+            content=ft.Container(
+                content=stats_content,
+                width=450,
+                height=500,
+            ),
+            actions=[
+                ft.ElevatedButton("閉じる", on_click=close_stats),
+            ],
+        )
+        self.page.open(stats_dialog)
+        self.page.update()
+
+    def _open_obs_window(self, e):
+        """OBS用ポップアウトウィンドウを開く"""
+        # OBSウィンドウダイアログを表示
+        def close_obs(e):
+            self.page.close(obs_dialog)
+
+        # 翻訳メッセージのみを表示するシンプルなビュー
+        obs_content = ft.ListView(spacing=5, padding=10, auto_scroll=True)
+
+        for msg in self.messages[-50:]:  # 最新50件
+            if msg.translation:
+                obs_content.controls.append(
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text(f"{msg.user}", weight=ft.FontWeight.BOLD, size=14),
+                            ft.Text(msg.translation, size=16, color=ft.Colors.BLUE_700),
+                        ], spacing=2),
+                        padding=8,
+                        border=ft.border.all(1, ft.Colors.GREY_400),
+                        border_radius=5,
+                    )
+                )
+
+        obs_dialog = ft.AlertDialog(
+            modal=False,
+            title=ft.Row([
+                ft.Icon(ft.Icons.OPEN_IN_NEW, size=20),
+                ft.Text("OBS用 翻訳表示", weight=ft.FontWeight.BOLD),
+                ft.Container(expand=True),
+                ft.Text("（このウィンドウをOBSでキャプチャ）", size=10, color=ft.Colors.GREY),
+            ]),
+            content=ft.Container(
+                content=obs_content,
+                width=500,
+                height=400,
+                bgcolor=ft.Colors.BLACK,
+            ),
+            actions=[
+                ft.TextButton("閉じる", on_click=close_obs),
+            ],
+            bgcolor=ft.Colors.BLACK,
+        )
+        self.page.open(obs_dialog)
+        self.page.update()
 
     def _create_status_bar(self) -> ft.Container:
         """ステータスバー作成"""
@@ -642,6 +961,10 @@ class MainWindow:
         if message.lang:
             self.lang_stats[message.lang] = self.lang_stats.get(message.lang, 0) + 1
 
+        # サウンド通知（翻訳があった場合）
+        if message.translation:
+            self.sound_manager.play(SoundManager.SOUND_TRANSLATION)
+
         # フィルタ適用
         self._apply_filters(None)
 
@@ -686,8 +1009,9 @@ class MainWindow:
 
         self.page.update()
 
-    def _create_message_widget(self, message: ChatMessage) -> ft.Container:
+    def _create_message_widget(self, message: ChatMessage, is_pinned: bool = False) -> ft.Container:
         """メッセージウィジェット作成"""
+        is_favorite = message.user.lower() in [u.lower() for u in self.favorite_users]
 
         def copy_message(e):
             """メッセージをクリップボードにコピー"""
@@ -703,31 +1027,109 @@ class MainWindow:
                 self.page.set_clipboard(message.translation)
                 self._log_message(f"翻訳をコピーしました")
 
+        def toggle_favorite(e):
+            """お気に入り登録/解除"""
+            user_lower = message.user.lower()
+            current_favorites = [u.lower() for u in self.favorite_users]
+            if user_lower in current_favorites:
+                self.favorite_users = [u for u in self.favorite_users if u.lower() != user_lower]
+                self._log_message(f"お気に入り解除: {message.user}")
+            else:
+                self.favorite_users.append(message.user)
+                self._log_message(f"お気に入り登録: {message.user}")
+            # 設定を保存
+            self.config_manager.update({"favorite_users": self.favorite_users})
+            self.config_manager.save_config()
+            # 表示を更新
+            self._update_chat_display()
+
+        def pin_message(e):
+            """メッセージをピン留め"""
+            if message not in self.pinned_messages:
+                self.pinned_messages.append(message)
+                self._log_message(f"ピン留め: {message.user}")
+                self._update_pinned_display()
+
+        def unpin_message(e):
+            """ピン留め解除"""
+            if message in self.pinned_messages:
+                self.pinned_messages.remove(message)
+                self._log_message(f"ピン留め解除: {message.user}")
+                self._update_pinned_display()
+
+        # ユーザー名の色（お気に入りは金色）
+        username_color = ft.Colors.AMBER_700 if is_favorite else None
+
         # メッセージカード
-        content = ft.Column([
-            ft.Row([
-                ft.Text(
-                    message.timestamp.strftime("%H:%M:%S"),
-                    size=10,
-                    color=ft.Colors.GREY,
-                ),
-                ft.Text(
-                    f"{message.user}:",
-                    weight=ft.FontWeight.BOLD,
-                ),
-                ft.Text(
-                    f"[{message.lang}]" if message.lang else "",
-                    size=10,
-                    color=ft.Colors.GREY,
-                ),
-                ft.Container(expand=True),
+        header_row = ft.Row([
+            ft.Text(
+                message.timestamp.strftime("%H:%M:%S"),
+                size=10,
+                color=ft.Colors.GREY,
+            ),
+        ], spacing=5)
+
+        # お気に入りアイコン
+        if is_favorite:
+            header_row.controls.append(
+                ft.Icon(ft.Icons.STAR, size=14, color=ft.Colors.AMBER)
+            )
+
+        header_row.controls.extend([
+            ft.Text(
+                f"{message.user}:",
+                weight=ft.FontWeight.BOLD,
+                color=username_color,
+            ),
+            ft.Text(
+                f"[{message.lang}]" if message.lang else "",
+                size=10,
+                color=ft.Colors.GREY,
+            ),
+            ft.Container(expand=True),
+        ])
+
+        # アクションボタン
+        if is_pinned:
+            header_row.controls.append(
                 ft.IconButton(
-                    icon=ft.Icons.CONTENT_COPY,
+                    icon=ft.Icons.PUSH_PIN,
                     icon_size=14,
-                    tooltip="メッセージをコピー",
-                    on_click=copy_message,
-                ),
-            ], spacing=5),
+                    icon_color=ft.Colors.RED,
+                    tooltip="ピン留め解除",
+                    on_click=unpin_message,
+                )
+            )
+        else:
+            header_row.controls.append(
+                ft.IconButton(
+                    icon=ft.Icons.PUSH_PIN_OUTLINED,
+                    icon_size=14,
+                    tooltip="ピン留め",
+                    on_click=pin_message,
+                )
+            )
+
+        header_row.controls.append(
+            ft.IconButton(
+                icon=ft.Icons.STAR if is_favorite else ft.Icons.STAR_BORDER,
+                icon_size=14,
+                icon_color=ft.Colors.AMBER if is_favorite else None,
+                tooltip="お気に入り解除" if is_favorite else "お気に入り登録",
+                on_click=toggle_favorite,
+            )
+        )
+        header_row.controls.append(
+            ft.IconButton(
+                icon=ft.Icons.CONTENT_COPY,
+                icon_size=14,
+                tooltip="メッセージをコピー",
+                on_click=copy_message,
+            )
+        )
+
+        content = ft.Column([
+            header_row,
             ft.Text(message.text, selectable=True),
         ], spacing=2)
 
@@ -746,21 +1148,64 @@ class MainWindow:
                 ], spacing=5)
             )
 
+        # 背景色（お気に入りはアンバー、ピン留めは黄色）
+        if is_pinned:
+            bgcolor = ft.Colors.with_opacity(0.15, ft.Colors.YELLOW)
+            border_color = ft.Colors.YELLOW_700
+        elif is_favorite:
+            bgcolor = ft.Colors.with_opacity(0.08, ft.Colors.AMBER)
+            border_color = ft.Colors.AMBER_400
+        else:
+            bgcolor = None
+            border_color = ft.Colors.GREY_400
+
         return ft.Container(
             content=content,
             padding=10,
-            border=ft.border.all(1, ft.Colors.GREY_400),
+            bgcolor=bgcolor,
+            border=ft.border.all(1, border_color),
             border_radius=5,
-            on_hover=lambda e: self._on_message_hover(e),
+            on_hover=lambda e: self._on_message_hover(e, is_favorite, is_pinned),
         )
 
-    def _on_message_hover(self, e):
+    def _on_message_hover(self, e, is_favorite: bool = False, is_pinned: bool = False):
         """メッセージホバー時のハイライト"""
         if e.data == "true":
-            e.control.bgcolor = ft.Colors.with_opacity(0.05, ft.Colors.PRIMARY)
+            e.control.bgcolor = ft.Colors.with_opacity(0.1, ft.Colors.PRIMARY)
         else:
-            e.control.bgcolor = None
+            # 元の背景色に戻す
+            if is_pinned:
+                e.control.bgcolor = ft.Colors.with_opacity(0.15, ft.Colors.YELLOW)
+            elif is_favorite:
+                e.control.bgcolor = ft.Colors.with_opacity(0.08, ft.Colors.AMBER)
+            else:
+                e.control.bgcolor = None
         e.control.update()
+
+    def _update_pinned_display(self):
+        """ピン留めメッセージの表示を更新"""
+        if not self.pinned_container:
+            return
+
+        self.pinned_container.content.controls.clear()
+
+        if self.pinned_messages:
+            self.pinned_container.visible = True
+            self.pinned_container.content.controls.append(
+                ft.Row([
+                    ft.Icon(ft.Icons.PUSH_PIN, size=16, color=ft.Colors.RED),
+                    ft.Text("ピン留め", size=12, weight=ft.FontWeight.BOLD),
+                    ft.Text(f"({len(self.pinned_messages)}件)", size=10, color=ft.Colors.GREY),
+                ], spacing=5)
+            )
+            for msg in self.pinned_messages[-3:]:  # 最新3件まで表示
+                self.pinned_container.content.controls.append(
+                    self._create_message_widget(msg, is_pinned=True)
+                )
+        else:
+            self.pinned_container.visible = False
+
+        self.page.update()
 
     def _update_message_stats(self):
         """メッセージ統計更新"""

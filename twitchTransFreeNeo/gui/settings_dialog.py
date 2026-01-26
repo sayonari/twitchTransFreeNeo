@@ -112,6 +112,9 @@ class SettingsDialog:
         self.font_size_slider: Optional[ft.Slider] = None
         self.window_width_field: Optional[ft.TextField] = None
         self.window_height_field: Optional[ft.TextField] = None
+        self.sound_enabled_checkbox: Optional[ft.Checkbox] = None
+        self.sound_volume_slider: Optional[ft.Slider] = None
+        self.accent_color_dropdown: Optional[ft.Dropdown] = None
 
     def _create_settings_card(self, title: str, icon: str, content: ft.Control,
                               helper_text: str = None) -> ft.Card:
@@ -213,8 +216,14 @@ class SettingsDialog:
                 actions=[
                     ft.TextButton("キャンセル", on_click=self._cancel),
                     ft.ElevatedButton("適用", on_click=self._apply),
-                    ft.ElevatedButton("OK", on_click=self._ok,
-                                     style=ft.ButtonStyle(bgcolor=ft.Colors.PRIMARY)),
+                    ft.ElevatedButton(
+                        "OK",
+                        on_click=self._ok,
+                        style=ft.ButtonStyle(
+                            bgcolor=ft.Colors.PRIMARY,
+                            color=ft.Colors.WHITE,
+                        )
+                    ),
                 ],
             )
             print("DEBUG: AlertDialog created")
@@ -1017,12 +1026,67 @@ class SettingsDialog:
             quick_size_buttons,
         )
 
+        # サウンド通知設定
+        self.sound_enabled_checkbox = ft.Checkbox(
+            label="サウンド通知を有効にする",
+            value=self.config.get("sound_enabled", False),
+        )
+
+        sound_volume_text = ft.Text(f"音量: {int(self.config.get('sound_volume', 0.5) * 100)}%", size=12)
+
+        self.sound_volume_slider = ft.Slider(
+            min=0,
+            max=1,
+            divisions=10,
+            value=self.config.get("sound_volume", 0.5),
+            label="{value}",
+            on_change=lambda e: setattr(sound_volume_text, 'value', f"音量: {int(e.control.value * 100)}%") or self.page.update(),
+        )
+
+        sound_card = self._create_settings_card(
+            "サウンド通知",
+            ft.Icons.NOTIFICATIONS_ACTIVE,
+            ft.Column([
+                self.sound_enabled_checkbox,
+                sound_volume_text,
+                self.sound_volume_slider,
+                ft.Text("翻訳メッセージ受信時に通知音を再生", size=11, color=ft.Colors.GREY_600),
+            ], spacing=4),
+        )
+
+        # カスタムテーマ設定
+        self.accent_color_dropdown = ft.Dropdown(
+            label="アクセントカラー",
+            options=[
+                ft.DropdownOption("blue", "ブルー"),
+                ft.DropdownOption("purple", "パープル"),
+                ft.DropdownOption("green", "グリーン"),
+                ft.DropdownOption("orange", "オレンジ"),
+                ft.DropdownOption("red", "レッド"),
+                ft.DropdownOption("teal", "ティール"),
+            ],
+            value=self.config.get("accent_color", "blue"),
+            width=200,
+        )
+
+        theme_card = self._create_settings_card(
+            "テーマ設定",
+            ft.Icons.PALETTE,
+            ft.Column([
+                self.accent_color_dropdown,
+                ft.Text("アクセントカラーを変更します", size=11, color=ft.Colors.GREY_600),
+                ft.Text("変更は再起動後に反映されます", size=11, color=ft.Colors.GREY_600),
+            ], spacing=4),
+        )
+
         return ft.Container(
             content=ft.Column([
                 self._create_scroll_hint(),
                 font_card,
                 window_card,
                 quick_card,
+                sound_card,
+                theme_card,
             ], scroll=ft.ScrollMode.ALWAYS, spacing=12),
             padding=10,
         )
@@ -1110,6 +1174,13 @@ class SettingsDialog:
         updated["font_size"] = int(self.font_size_slider.value)
         updated["window_width"] = int(self.window_width_field.value) if self.window_width_field.value.isdigit() else 1200
         updated["window_height"] = int(self.window_height_field.value) if self.window_height_field.value.isdigit() else 800
+
+        # サウンド設定
+        updated["sound_enabled"] = self.sound_enabled_checkbox.value if self.sound_enabled_checkbox else False
+        updated["sound_volume"] = self.sound_volume_slider.value if self.sound_volume_slider else 0.5
+
+        # テーマ設定
+        updated["accent_color"] = self.accent_color_dropdown.value if self.accent_color_dropdown else "blue"
 
         return updated
 
