@@ -2,105 +2,273 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>TwitchTransFreeNext - OAuth認証</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>twitchTransFreeNeo - Twitch OAuth認証</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
         body {
-            font-family: 'Arial', sans-serif;
-            max-width: 800px;
-            margin: 20px auto;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
             padding: 20px;
-            background-color: #f0f0f0;
-            line-height: 1.6;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            line-height: 1.8;
+        }
+        h1 {
+            color: #9146ff;
+            text-align: center;
+            border-bottom: 3px solid #9146ff;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #bf94ff;
+            margin-top: 30px;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .logo svg {
+            width: 80px;
+            height: 80px;
         }
         .container {
-            background: white;
-            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 20px 0;
+        }
+        .warning-box {
+            background: rgba(255, 152, 0, 0.2);
+            border: 2px solid #ff9800;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+        .warning-box h3 {
+            color: #ff9800;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        .info-box {
+            background: rgba(33, 150, 243, 0.2);
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+        .info-box h3 {
+            color: #2196f3;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        .account-check {
+            background: rgba(145, 70, 255, 0.15);
+            border: 2px solid #9146ff;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 25px 0;
+            text-align: center;
+        }
+        .account-check h3 {
+            color: #bf94ff;
+            margin-top: 0;
+        }
+        .account-status {
+            font-size: 1.2em;
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+        }
+        .account-status.logged-in {
+            color: #4caf50;
+        }
+        .account-status.not-logged-in {
+            color: #ff9800;
+        }
+        .account-status.checking {
+            color: #2196f3;
         }
         .auth-button {
-            background: #6441a5;
-            color: white;
-            border: none;
-            padding: 15px 30px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 1.1em;
-            text-decoration: none;
             display: inline-block;
-            margin: 20px 0;
+            background: #9146ff;
+            color: white;
+            padding: 15px 35px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            font-size: 1.1em;
+            margin: 15px 0;
+            transition: all 0.3s;
+            border: none;
+            cursor: pointer;
         }
         .auth-button:hover {
-            background: #7d5bbe;
+            background: #772ce8;
+            text-decoration: none;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(145, 70, 255, 0.4);
+        }
+        .auth-button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .secondary-button {
+            display: inline-block;
+            background: #424242;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.95em;
+            margin: 10px 5px;
+            transition: all 0.3s;
+        }
+        .secondary-button:hover {
+            background: #616161;
+            text-decoration: none;
+        }
+        a {
+            color: #64b5f6;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        ol, ul {
+            padding-left: 25px;
+        }
+        li {
+            margin: 10px 0;
         }
         .steps {
-            background: #f8f8f8;
+            background: rgba(255, 255, 255, 0.03);
             padding: 20px;
-            border-radius: 4px;
-            margin: 20px 0;
+            border-radius: 8px;
         }
-        .warning {
-            background: #fff3cd;
-            border: 1px solid #ffeeba;
-            color: #856404;
-            padding: 15px;
-            border-radius: 4px;
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: #888;
+        }
+        .button-container {
+            text-align: center;
             margin: 20px 0;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>TwitchTransFreeNext OAuth認証</h1>
-        <p>
-            現在Twitchにログインしているアカウントで認証されます。<br>
-            意図しないアカウントで認証される場合は、一度Twitchからログアウトしてください。
-        </p>
-        <p>
-            <a href="https://www.twitch.tv/logout" target="_blank" rel="noopener noreferrer">Twitchにログアウトしに行く</a>
-            （ログアウト後、下のボタンで認証を開始してください）
-        </p>
-        <a href="#" id="authButton" class="auth-button">Twitchアカウントで認証を開始する</a>
-        
-        <div class="steps">
-            <h2>認証手順</h2>
-            <ol>
-                <li>以下の「Twitchで認証する」ボタンをクリックします</li>
-                <li>Twitchのログインページが表示されたら、ログインしてください</li>
-                <li>権限の承認を求められたら「承認」をクリックしてください</li>
-                <li>認証が完了すると、トークン表示ページに移動します</li>
-                <li>表示されたトークンをTwitchTransFreeNextの config.py に入力してください</li>
-            </ol>
-            <BR>
-            <h2>Twitchチャット翻訳ちゃんについて</h2>
-            <ul>
-                <li>以下のページを参照のこと</li>
-                <li><a href="https://www.sayonari.com/trans_asr/index_trans.html">https://www.sayonari.com/trans_asr/index_trans.html</a></li>
-            </ul>
-        </div>
-
-        <div class="warning">
-            <h3>⚠️ 注意事項</h3>
-            <ul>
-                <li>この認証は TwitchTransFreeNext でチャットを読み書きするために必要です</li>
-                <li>取得したトークンは他人に見せたり共有したりしないでください</li>
-                <li>認証に問題がある場合は、再度このページにアクセスして認証をやり直してください</li>
-            </ul>
-        </div>
-
+    <div class="logo">
+        <svg viewBox="0 0 256 268" fill="#9146ff">
+            <path d="M17.458 0L0 46.556v186.201h63.983v34.934h34.931l34.898-34.934h52.36L256 162.954V0H17.458zm23.259 23.263H232.73v128.029l-40.739 40.741H128L93.113 226.92v-34.886H40.717V23.263zm64.008 116.405H128V69.844h-23.275v69.824zm63.997 0h23.27V69.844h-23.27v69.824z"/>
+        </svg>
     </div>
 
+    <h1>Twitch OAuth認証</h1>
+    <p style="text-align: center; font-size: 1.1em;">twitchTransFreeNeo でTwitchチャットを読み書きするための認証</p>
+
+    <!-- アカウント確認セクション -->
+    <div class="account-check">
+        <h3>現在のログイン状態</h3>
+        <div id="accountStatus" class="account-status checking">
+            確認中...
+        </div>
+        <div id="accountActions">
+            <a href="https://www.twitch.tv/" target="_blank" class="secondary-button">Twitchを開く</a>
+            <a href="https://www.twitch.tv/logout" target="_blank" class="secondary-button">ログアウト</a>
+        </div>
+    </div>
+
+    <div class="warning-box">
+        <h3>認証前に確認してください</h3>
+        <p><strong>現在Twitchにログインしているアカウントで認証されます。</strong></p>
+        <p>複数アカウントをお持ちの場合は、上記の「現在のログイン状態」で正しいアカウントでログインしているか確認してください。</p>
+        <p>別のアカウントで認証したい場合は、先にTwitchからログアウトしてください。</p>
+    </div>
+
+    <div class="button-container">
+        <a href="#" id="authButton" class="auth-button">Twitchアカウントで認証を開始する</a>
+    </div>
+
+    <div class="container">
+        <h2>認証手順</h2>
+        <div class="steps">
+            <ol>
+                <li>上の「Twitchアカウントで認証を開始する」ボタンをクリック</li>
+                <li>Twitchのログインページが表示されたらログイン（または認証確認画面が表示）</li>
+                <li>権限の承認を求められたら「承認」をクリック</li>
+                <li>認証完了後、トークンが表示されます</li>
+                <li>表示されたトークンをtwitchTransFreeNeoの設定画面に入力</li>
+            </ol>
+        </div>
+    </div>
+
+    <div class="info-box">
+        <h3>必要な権限について</h3>
+        <ul>
+            <li><strong>chat:read</strong> - チャットメッセージを読み取る権限</li>
+            <li><strong>chat:edit</strong> - チャットに翻訳を投稿する権限</li>
+        </ul>
+        <p>これらの権限は、チャット翻訳機能のために必要です。</p>
+    </div>
+
+    <div class="container">
+        <h2>トークンの安全な取り扱い</h2>
+        <ul>
+            <li>取得したトークンは<strong>絶対に他人に見せたり共有したりしない</strong>でください</li>
+            <li>トークンが漏洩した場合は、<a href="https://www.twitch.tv/settings/connections" target="_blank">Twitchの接続設定</a>からアクセスを取り消してください</li>
+            <li>定期的にトークンを再発行することをお勧めします</li>
+        </ul>
+    </div>
+
+    <div class="container">
+        <h2>関連リンク</h2>
+        <div class="button-container">
+            <a href="https://www.sayonari.com/trans_asr/index_trans.html" target="_blank" class="secondary-button">twitchTransFreeNeo について</a>
+            <a href="https://github.com/sayonari/twitchTransFreeNeo" target="_blank" class="secondary-button">GitHub リポジトリ</a>
+        </div>
+    </div>
+
+    <footer>
+        <p>twitchTransFreeNeo - Twitch OAuth認証</p>
+        <p>&copy; 2024-2025 さあたん / 西村良太</p>
+    </footer>
+
     <script>
-        // 認証用URLを生成
+        const clientId = 'yz7k9yayapc1uagpojw6f7fjjmmtc8';
+        const redirectUri = encodeURIComponent('https://www.sayonari.com/trans_asr/ttfn_oauth_out.html');
+        const scope = 'chat:read+chat:edit';
+
+        // 認証URLを設定
         window.onload = function() {
-            const clientId = 'yz7k9yayapc1uagpojw6f7fjjmmtc8'; // あなたのクライアントIDを設定
-            const redirectUri = encodeURIComponent('https://www.sayonari.com/trans_asr/ttfn_oauth_out.html'); // トークン表示ページのURLを設定
-            const scope = 'chat:read+chat:edit';
-            
             const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}`;
-            
             document.getElementById('authButton').href = authUrl;
+
+            // ログイン状態をチェック（Twitch APIの制限により完全なチェックは難しい）
+            checkLoginStatus();
         };
+
+        function checkLoginStatus() {
+            const statusEl = document.getElementById('accountStatus');
+
+            // Twitchの認証状態は直接チェックできないため、案内を表示
+            statusEl.innerHTML = `
+                <p>Twitchにログインしているか確認するには、<a href="https://www.twitch.tv/" target="_blank" style="color: #9146ff;">Twitch.tv</a> を開いてください。</p>
+                <p style="font-size: 0.9em; color: #aaa;">右上にアカウント名が表示されていれば、そのアカウントで認証されます。</p>
+            `;
+            statusEl.className = 'account-status';
+        }
     </script>
 </body>
 </html>

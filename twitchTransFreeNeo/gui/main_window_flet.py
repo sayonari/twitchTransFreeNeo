@@ -572,6 +572,7 @@ class MainWindow:
 
         channel = config.get("twitch_channel", "")
         bot_user = config.get("trans_username", "")
+        platform = config.get("platform", "twitch")
 
         if self.channel_text:
             self.channel_text.value = channel if channel else "未設定"
@@ -580,6 +581,14 @@ class MainWindow:
         if self.bot_text:
             self.bot_text.value = bot_user if bot_user else "未設定"
             self.bot_text.color = ft.Colors.GREEN if bot_user else ft.Colors.RED
+
+        # プラットフォームインジケーターを更新
+        if self.platform_indicator and self.platform_indicator.parent:
+            parent = self.platform_indicator.parent
+            new_indicator = self._create_platform_indicator(platform)
+            idx = parent.controls.index(self.platform_indicator)
+            parent.controls[idx] = new_indicator
+            self.platform_indicator = new_indicator
 
         self.page.update()
 
@@ -614,20 +623,28 @@ class MainWindow:
 
 【基本的な使い方】
 1. 「設定」ボタンから必要な設定を行ってください
-2. 「接続開始」ボタンでTwitchチャンネルに接続します
+2. 「接続開始」ボタンでチャンネルに接続します
 3. チャットメッセージが自動的に翻訳されて表示されます
 
-【必須設定】
+【対応プラットフォーム】
+- Twitch: チャンネル名とOAuthトークンが必要
+- YouTube Live: 動画IDが必要（OAuth認証で投稿も可能）
+- 同時配信: TwitchとYouTube両方を監視
+
+【Twitch設定】
 - Twitchチャンネル名
 - 翻訳bot用ユーザー名
-- OAuthトークン（https://twitchapps.com/tmi/ で取得）
+- OAuthトークン
+
+【YouTube Live設定】
+- YouTube動画ID（URLでも可）
+- Client ID / Client Secret（投稿する場合）
 
 【機能】
-- リアルタイム翻訳
-- 翻訳履歴表示
-- フィルタリング機能
-- 検索機能
-- 統計情報表示
+- リアルタイム翻訳（60以上の言語対応）
+- 翻訳結果のチャット投稿
+- フィルタリング・検索機能
+- TTS（音声読み上げ）
 """
 
         def close_help_dialog(e):

@@ -8,8 +8,10 @@ pytchatライブラリを使用してYouTube Liveのチャットを監視・翻�
 
 import asyncio
 import threading
+import time
 from datetime import datetime
 from typing import Dict, Any, Callable, Optional
+from collections import deque
 
 # pytchatのインポート
 try:
@@ -67,6 +69,14 @@ class YouTubeChatMonitor:
 
         # 表示のみモードかチェック
         self.view_only_mode = config.get("view_only_mode", False)
+
+        # 投稿レート制限設定
+        self.post_interval = config.get("youtube_post_interval", 3.0)  # 最小投稿間隔（秒）
+        self.last_post_time = 0.0
+        self.post_queue: deque = deque(maxlen=100)  # 投稿キュー
+        self.daily_post_count = 0  # 1日の投稿数カウント
+        self.daily_quota_limit = config.get("youtube_daily_quota_limit", 180)  # 1日の投稿上限（約9000ユニット分）
+        self._rate_limit_warned = False
 
         # 認証情報があれば初期化
         if not self.view_only_mode and GOOGLE_AUTH_AVAILABLE:
@@ -269,8 +279,24 @@ class YouTubeChatMonitor:
             self._post_translation(chat_message)
 
     def _post_translation(self, chat_message: ChatMessage):
-        """翻訳結果をYouTubeチャットに投稿"""
+        """翻訳結果をYouTubeチャットに投稿（レート制限付き）"""
         if not self.can_post or not self.auth_manager or not self.live_chat_id:
+            return
+
+        # 1日のクォータ制限チェック
+        if self.daily_post_count >= self.daily_quota_limit:
+            if not self._rate_limit_warned:
+                print(f"[WARNING] YouTube投稿: 1日のクォータ上限({self.daily_quota_limit}件)に達しました")
+                self._rate_limit_warned = True
+            return
+
+        # 投稿間隔チェック
+        current_time = time.time()
+        elapsed = current_time - self.last_post_time
+        if elapsed < self.post_interval:
+            # 間隔が短すぎる場合はスキップ（キューに入れない）
+            if self.config.get("debug", False):
+                print(f"[DEBUG] YouTube投稿スキップ: 間隔が短すぎます ({elapsed:.1f}s < {self.post_interval}s)")
             return
 
         try:
@@ -290,8 +316,16 @@ class YouTubeChatMonitor:
             # YouTube チャットに投稿
             success, error = self.auth_manager.send_message(self.live_chat_id, message_text)
 
-            if not success:
+            if success:
+                self.last_post_time = current_time
+                self.daily_post_count += 1
+                if self.config.get("debug", False):
+                    print(f"[DEBUG] YouTube投稿成功 ({self.daily_post_count}/{self.daily_quota_limit})")
+            else:
                 print(f"[WARNING] YouTube投稿失敗: {error}")
+                # クォータ超過エラーの場合は制限フラグを立てる
+                if "quotaExceeded" in str(error):
+                    self._rate_limit_warned = True
 
         except Exception as e:
             print(f"[ERROR] YouTube投稿エラー: {e}")

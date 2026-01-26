@@ -83,6 +83,8 @@ class SettingsDialog:
         self.youtube_client_id_field: Optional[ft.TextField] = None
         self.youtube_client_secret_field: Optional[ft.TextField] = None
         self.youtube_auth_status_text: Optional[ft.Text] = None
+        self.youtube_post_interval_field: Optional[ft.TextField] = None
+        self.youtube_daily_limit_field: Optional[ft.TextField] = None
         self.youtube_container: Optional[ft.Container] = None
 
         # フィルタ設定
@@ -412,6 +414,9 @@ class SettingsDialog:
                         padding=8,
                         border_radius=4,
                     ),
+                    ft.Divider(height=1),
+                    ft.Text("投稿レート制限", weight=ft.FontWeight.W_500, size=13),
+                    self._create_youtube_rate_limit_fields(),
                 ], spacing=8),
                 helper_text="ライブ配信の動画IDと認証設定"
             ),
@@ -488,6 +493,41 @@ class SettingsDialog:
                 misc_card,
             ], scroll=ft.ScrollMode.ALWAYS, spacing=12),
             padding=10,
+        )
+
+    def _create_youtube_rate_limit_fields(self) -> ft.Container:
+        """YouTube投稿レート制限フィールドを作成"""
+        self.youtube_post_interval_field = ft.TextField(
+            label="最小投稿間隔（秒）",
+            value=str(self.config.get("youtube_post_interval", 3.0)),
+            hint_text="推奨: 3〜5秒",
+            keyboard_type=ft.KeyboardType.NUMBER,
+            width=150,
+        )
+
+        self.youtube_daily_limit_field = ft.TextField(
+            label="1日の投稿上限",
+            value=str(self.config.get("youtube_daily_quota_limit", 180)),
+            hint_text="推奨: 100〜200件",
+            keyboard_type=ft.KeyboardType.NUMBER,
+            width=150,
+        )
+
+        return ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    self.youtube_post_interval_field,
+                    self.youtube_daily_limit_field,
+                ], spacing=12),
+                ft.Text(
+                    "YouTube Data APIにはクォータ制限があります。\n"
+                    "投稿間隔を短くしすぎると制限に達する可能性があります。",
+                    size=11, color=ft.Colors.GREY_600,
+                ),
+            ], spacing=4),
+            bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.AMBER),
+            padding=10,
+            border_radius=4,
         )
 
     def _on_platform_change(self):
@@ -1001,6 +1041,16 @@ class SettingsDialog:
         updated["youtube_client_id"] = self.youtube_client_id_field.value.strip()
         updated["youtube_client_secret"] = self.youtube_client_secret_field.value.strip()
 
+        # YouTube投稿レート制限設定
+        try:
+            updated["youtube_post_interval"] = float(self.youtube_post_interval_field.value) if self.youtube_post_interval_field.value else 3.0
+        except ValueError:
+            updated["youtube_post_interval"] = 3.0
+        try:
+            updated["youtube_daily_quota_limit"] = int(self.youtube_daily_limit_field.value) if self.youtube_daily_limit_field.value else 180
+        except ValueError:
+            updated["youtube_daily_quota_limit"] = 180
+
         # 表示設定
         updated["trans_text_color"] = self.color_dropdown.value
         updated["show_by_name"] = self.show_name_checkbox.value
@@ -1112,6 +1162,10 @@ class SettingsDialog:
 
             auth_manager = YouTubeAuthManager(self.config)
             if auth_manager.is_authenticated():
+                # アカウント情報を取得して表示
+                account_info = self._get_youtube_account_info(auth_manager)
+                if account_info:
+                    return f"✅ 認証済み（投稿機能が利用可能）\nアカウント: {account_info}"
                 return "✅ 認証済み（投稿機能が利用可能）"
             elif auth_manager.has_credentials():
                 return "⚠️ 認証情報は設定済み（認証ボタンを押してください）"
@@ -1152,7 +1206,12 @@ class SettingsDialog:
             # 非同期で認証を実行（ブラウザが開く）
             def auth_callback(success, message):
                 if success:
-                    self.youtube_auth_status_text.value = "✅ 認証成功！"
+                    # 認証成功時にアカウント情報を取得して表示
+                    account_info = self._get_youtube_account_info(auth_manager)
+                    if account_info:
+                        self.youtube_auth_status_text.value = f"✅ 認証成功！\nアカウント: {account_info}"
+                    else:
+                        self.youtube_auth_status_text.value = "✅ 認証成功！"
                     self.youtube_auth_status_text.color = ft.Colors.GREEN_700
                 else:
                     self.youtube_auth_status_text.value = f"❌ 認証失敗: {message}"
@@ -1183,6 +1242,31 @@ class SettingsDialog:
 
         except Exception as ex:
             self._show_auth_error(f"認証取り消しエラー: {ex}")
+
+    def _get_youtube_account_info(self, auth_manager) -> Optional[str]:
+        """YouTube認証済みアカウントの情報を取得"""
+        try:
+            service = auth_manager.get_youtube_service()
+            if not service:
+                return None
+
+            # チャンネル情報を取得
+            response = service.channels().list(
+                part='snippet',
+                mine=True
+            ).execute()
+
+            if response.get('items'):
+                channel = response['items'][0]
+                snippet = channel.get('snippet', {})
+                title = snippet.get('title', '')
+                custom_url = snippet.get('customUrl', '')
+                if custom_url:
+                    return f"{title} (@{custom_url})"
+                return title
+        except Exception as e:
+            print(f"[WARNING] YouTubeアカウント情報取得エラー: {e}")
+        return None
 
     def _show_auth_error(self, message: str):
         """認証エラーを表示"""
