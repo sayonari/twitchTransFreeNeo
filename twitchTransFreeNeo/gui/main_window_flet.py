@@ -3,8 +3,9 @@
 
 import flet as ft
 import asyncio
+import os
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 try:
     from ..utils.config_manager import ConfigManager
@@ -40,10 +41,29 @@ class MainWindow:
         self.total_messages_text: Optional[ft.Text] = None
         self.translated_messages_text: Optional[ft.Text] = None
         self.log_text: Optional[ft.Text] = None
+        self.lang_stats_column: Optional[ft.Column] = None
+        self.connection_time_text: Optional[ft.Text] = None
+        self.auto_scroll_switch: Optional[ft.Switch] = None
+        self.status_icon: Optional[ft.Icon] = None
+        self.twitch_status_icon: Optional[ft.Icon] = None
+        self.youtube_status_icon: Optional[ft.Icon] = None
 
         # データ
         self.messages: List[ChatMessage] = []
         self.filtered_messages: List[ChatMessage] = []
+
+        # 統計データ
+        self.lang_stats: Dict[str, int] = {}  # 言語別カウント
+        self.connection_start_time: Optional[datetime] = None
+        self.auto_scroll_enabled = True
+        self._connection_timer_running = False
+
+        # メッセージレート計測用
+        self.message_timestamps: List[datetime] = []
+        self.message_rate_text: Optional[ft.Text] = None
+
+        # ファイル保存用
+        self.file_picker: Optional[ft.FilePicker] = None
 
     def main(self, page: ft.Page):
         """メインエントリーポイント"""
@@ -83,12 +103,19 @@ class MainWindow:
         # 終了時の処理
         self.page.on_close = self._on_closing
 
+        # キーボードショートカット設定
+        self.page.on_keyboard_event = self._on_keyboard_event
+
     def _load_config(self):
         """設定を読み込み"""
         self.config_manager.load_config()
 
     def _create_ui(self):
         """UI作成"""
+        # ファイルピッカーを設定
+        self.file_picker = ft.FilePicker(on_result=self._on_file_picker_result)
+        self.page.overlay.append(self.file_picker)
+
         # メインレイアウト
         self.page.add(
             ft.Column([
@@ -142,6 +169,11 @@ class MainWindow:
                 ft.Text("翻訳bot:"),
                 self.bot_text,
                 ft.Container(expand=True),  # スペーサー
+                ft.IconButton(
+                    icon=ft.Icons.DARK_MODE,
+                    tooltip="テーマ切り替え",
+                    on_click=self._toggle_theme,
+                ),
                 ft.ElevatedButton("履歴クリア", icon=ft.Icons.CLEAR_ALL, on_click=self._clear_chat),
                 ft.ElevatedButton("ヘルプ", icon=ft.Icons.HELP, on_click=self._show_help),
             ], spacing=10),
@@ -230,47 +262,156 @@ class MainWindow:
 
     def _create_info_panel(self) -> ft.Container:
         """情報パネル作成"""
-        self.total_messages_text = ft.Text("0", size=20, weight=ft.FontWeight.BOLD)
-        self.translated_messages_text = ft.Text("0", size=20, weight=ft.FontWeight.BOLD)
-        self.log_text = ft.Text("", selectable=True)
+        self.total_messages_text = ft.Text("0", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.PRIMARY)
+        self.translated_messages_text = ft.Text("0", size=18, weight=ft.FontWeight.BOLD, color=ft.Colors.GREEN)
+        self.connection_time_text = ft.Text("--:--:--", size=14, color=ft.Colors.GREY_600)
+        self.message_rate_text = ft.Text("0/分", size=12, color=ft.Colors.ORANGE)
+        self.lang_stats_column = ft.Column([], spacing=2)
+        self.log_text = ft.Text("", selectable=True, size=11)
 
-        return ft.Container(
+        # 自動スクロール切り替え
+        self.auto_scroll_switch = ft.Switch(
+            value=True,
+            label="自動スクロール",
+            on_change=self._toggle_auto_scroll,
+        )
+
+        # 統計カード
+        stats_card = ft.Container(
             content=ft.Column([
-                ft.Text("統計情報", size=16, weight=ft.FontWeight.BOLD),
-                ft.Divider(),
                 ft.Row([
-                    ft.Text("総メッセージ数:"),
-                    self.total_messages_text,
-                ]),
+                    ft.Icon(ft.Icons.ANALYTICS, size=18, color=ft.Colors.PRIMARY),
+                    ft.Text("統計情報", size=14, weight=ft.FontWeight.BOLD),
+                ], spacing=5),
                 ft.Row([
-                    ft.Text("翻訳済み:"),
-                    self.translated_messages_text,
-                ]),
-                ft.Divider(),
-                ft.Text("ログ", size=16, weight=ft.FontWeight.BOLD),
+                    ft.Column([
+                        ft.Text("メッセージ", size=11, color=ft.Colors.GREY_600),
+                        self.total_messages_text,
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=0),
+                    ft.Column([
+                        ft.Text("翻訳済み", size=11, color=ft.Colors.GREY_600),
+                        self.translated_messages_text,
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=0),
+                ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
+                ft.Divider(height=1),
+                ft.Row([
+                    ft.Column([
+                        ft.Text("接続時間", size=11, color=ft.Colors.GREY_600),
+                        self.connection_time_text,
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=0),
+                    ft.Column([
+                        ft.Text("受信速度", size=11, color=ft.Colors.GREY_600),
+                        self.message_rate_text,
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=0),
+                ], alignment=ft.MainAxisAlignment.SPACE_AROUND),
+            ], spacing=8),
+            padding=12,
+            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.PRIMARY),
+            border_radius=8,
+        )
+
+        # 言語統計カード
+        lang_stats_card = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.LANGUAGE, size=18, color=ft.Colors.BLUE),
+                    ft.Text("言語別統計", size=14, weight=ft.FontWeight.BOLD),
+                ], spacing=5),
+                self.lang_stats_column,
+            ], spacing=8),
+            padding=12,
+            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.BLUE),
+            border_radius=8,
+        )
+
+        # ログカード
+        log_card = ft.Container(
+            content=ft.Column([
+                ft.Row([
+                    ft.Icon(ft.Icons.TERMINAL, size=18, color=ft.Colors.GREY_600),
+                    ft.Text("ログ", size=14, weight=ft.FontWeight.BOLD),
+                    ft.Container(expand=True),
+                    ft.IconButton(
+                        icon=ft.Icons.DELETE_OUTLINE,
+                        icon_size=16,
+                        tooltip="ログクリア",
+                        on_click=self._clear_log,
+                    ),
+                ], spacing=5),
                 ft.Container(
                     content=ft.Column([
                         self.log_text,
                     ], scroll=ft.ScrollMode.AUTO),
                     expand=True,
-                    border=ft.border.all(1, ft.Colors.GREY_400),
+                    border=ft.border.all(1, ft.Colors.GREY_300),
                     border_radius=5,
-                    padding=10,
+                    padding=8,
+                    bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.BLACK),
                 ),
-                ft.ElevatedButton("ログクリア", on_click=self._clear_log),
+            ], spacing=8, expand=True),
+            padding=12,
+            bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.GREY),
+            border_radius=8,
+            expand=True,
+        )
+
+        # アクションボタン
+        action_buttons = ft.Row([
+            ft.OutlinedButton(
+                "ログ出力",
+                icon=ft.Icons.DOWNLOAD,
+                on_click=self._export_log,
+                tooltip="翻訳ログをファイルに保存",
+            ),
+        ], alignment=ft.MainAxisAlignment.CENTER)
+
+        return ft.Container(
+            content=ft.Column([
+                stats_card,
+                lang_stats_card,
+                self.auto_scroll_switch,
+                log_card,
+                action_buttons,
             ], spacing=10, expand=True),
-            width=300,
+            width=320,
             padding=10,
         )
 
+    def _toggle_auto_scroll(self, e):
+        """自動スクロール切り替え"""
+        self.auto_scroll_enabled = self.auto_scroll_switch.value
+        if self.chat_list:
+            self.chat_list.auto_scroll = self.auto_scroll_enabled
+        self._log_message(f"自動スクロール: {'オン' if self.auto_scroll_enabled else 'オフ'}")
+
     def _create_status_bar(self) -> ft.Container:
         """ステータスバー作成"""
+        self.status_icon = ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.RED)
         self.status_text = ft.Text("未接続", size=12)
+        self.twitch_status_icon = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.LIVE_TV, size=14, color=ft.Colors.GREY_500),
+                ft.Text("Twitch", size=10, color=ft.Colors.GREY_500),
+            ], spacing=2),
+            visible=False,
+        )
+        self.youtube_status_icon = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.SMART_DISPLAY, size=14, color=ft.Colors.GREY_500),
+                ft.Text("YouTube", size=10, color=ft.Colors.GREY_500),
+            ], spacing=2),
+            visible=False,
+        )
 
         return ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.CIRCLE, size=12, color=ft.Colors.RED),
+                self.status_icon,
                 self.status_text,
+                ft.Container(width=20),
+                self.twitch_status_icon,
+                self.youtube_status_icon,
+                ft.Container(expand=True),
+                ft.Text("Ctrl+R: 接続 | Ctrl+,: 設定 | Ctrl+E: 出力 | F1: ヘルプ", size=10, color=ft.Colors.GREY_500),
             ], spacing=5),
             padding=ft.padding.symmetric(horizontal=10, vertical=5),
             bgcolor=ft.Colors.GREY_200,
@@ -368,6 +509,23 @@ class MainWindow:
                 self.connect_button.icon = ft.Icons.STOP
                 self.status_text.value = f"接続中: {', '.join(status_parts)}"
                 self.status_text.color = ft.Colors.GREEN
+                self.status_icon.color = ft.Colors.GREEN
+
+                # 接続時間計測開始
+                self.connection_start_time = datetime.now()
+                self._start_connection_timer()
+
+                # プラットフォームステータス更新
+                if platform in ["twitch", "both"] and twitch_success:
+                    self.twitch_status_icon.visible = True
+                    self.twitch_status_icon.content.controls[0].color = ft.Colors.PURPLE_500
+                    self.twitch_status_icon.content.controls[1].color = ft.Colors.PURPLE_500
+
+                if platform in ["youtube", "both"] and youtube_success:
+                    self.youtube_status_icon.visible = True
+                    self.youtube_status_icon.content.controls[0].color = ft.Colors.RED_700
+                    self.youtube_status_icon.content.controls[1].color = ft.Colors.RED_700
+
                 self.page.update()
             else:
                 await self._show_error_dialog(
@@ -440,6 +598,25 @@ class MainWindow:
             self.connect_button.icon = ft.Icons.PLAY_ARROW
             self.status_text.value = "未接続"
             self.status_text.color = ft.Colors.RED
+            self.status_icon.color = ft.Colors.RED
+
+            # 接続時間タイマー停止
+            self._connection_timer_running = False
+            self.connection_start_time = None
+            if self.connection_time_text:
+                self.connection_time_text.value = "--:--:--"
+
+            # プラットフォームステータスをリセット
+            if self.twitch_status_icon:
+                self.twitch_status_icon.visible = False
+            if self.youtube_status_icon:
+                self.youtube_status_icon.visible = False
+
+            # メッセージレートをリセット
+            self.message_timestamps.clear()
+            if self.message_rate_text:
+                self.message_rate_text.value = "0/分"
+
             self._log_message("接続を停止しました")
             self.page.update()
 
@@ -454,11 +631,23 @@ class MainWindow:
         if len(self.messages) > 1000:
             self.messages.pop(0)
 
+        # メッセージレート計測用のタイムスタンプを追加
+        now = datetime.now()
+        self.message_timestamps.append(now)
+        # 1分以上前のタイムスタンプを削除
+        cutoff = now - timedelta(minutes=1)
+        self.message_timestamps = [ts for ts in self.message_timestamps if ts > cutoff]
+
+        # 言語統計を更新
+        if message.lang:
+            self.lang_stats[message.lang] = self.lang_stats.get(message.lang, 0) + 1
+
         # フィルタ適用
         self._apply_filters(None)
 
         # 統計更新
         self._update_message_stats()
+        self._update_lang_stats()
 
     def _apply_filters(self, e):
         """フィルタ適用"""
@@ -499,6 +688,21 @@ class MainWindow:
 
     def _create_message_widget(self, message: ChatMessage) -> ft.Container:
         """メッセージウィジェット作成"""
+
+        def copy_message(e):
+            """メッセージをクリップボードにコピー"""
+            copy_text = f"{message.user}: {message.text}"
+            if message.translation:
+                copy_text += f"\n翻訳: {message.translation}"
+            self.page.set_clipboard(copy_text)
+            self._log_message(f"コピーしました: {message.user}")
+
+        def copy_translation_only(e):
+            """翻訳のみコピー"""
+            if message.translation:
+                self.page.set_clipboard(message.translation)
+                self._log_message(f"翻訳をコピーしました")
+
         # メッセージカード
         content = ft.Column([
             ft.Row([
@@ -516,8 +720,15 @@ class MainWindow:
                     size=10,
                     color=ft.Colors.GREY,
                 ),
+                ft.Container(expand=True),
+                ft.IconButton(
+                    icon=ft.Icons.CONTENT_COPY,
+                    icon_size=14,
+                    tooltip="メッセージをコピー",
+                    on_click=copy_message,
+                ),
             ], spacing=5),
-            ft.Text(message.text),
+            ft.Text(message.text, selectable=True),
         ], spacing=2)
 
         # 翻訳がある場合
@@ -525,7 +736,13 @@ class MainWindow:
             content.controls.append(
                 ft.Row([
                     ft.Icon(ft.Icons.TRANSLATE, size=16, color=ft.Colors.BLUE),
-                    ft.Text(message.translation, color=ft.Colors.BLUE_700),
+                    ft.Text(message.translation, color=ft.Colors.BLUE_700, selectable=True, expand=True),
+                    ft.IconButton(
+                        icon=ft.Icons.COPY_ALL,
+                        icon_size=14,
+                        tooltip="翻訳をコピー",
+                        on_click=copy_translation_only,
+                    ),
                 ], spacing=5)
             )
 
@@ -534,7 +751,16 @@ class MainWindow:
             padding=10,
             border=ft.border.all(1, ft.Colors.GREY_400),
             border_radius=5,
+            on_hover=lambda e: self._on_message_hover(e),
         )
+
+    def _on_message_hover(self, e):
+        """メッセージホバー時のハイライト"""
+        if e.data == "true":
+            e.control.bgcolor = ft.Colors.with_opacity(0.05, ft.Colors.PRIMARY)
+        else:
+            e.control.bgcolor = None
+        e.control.update()
 
     def _update_message_stats(self):
         """メッセージ統計更新"""
@@ -543,7 +769,139 @@ class MainWindow:
 
         self.total_messages_text.value = str(total)
         self.translated_messages_text.value = str(translated)
+
+        # メッセージレート更新（1分あたりのメッセージ数）
+        message_rate = len(self.message_timestamps)
+        if self.message_rate_text:
+            self.message_rate_text.value = f"{message_rate}/分"
+
         self.page.update()
+
+    def _update_lang_stats(self):
+        """言語統計を更新"""
+        if not self.lang_stats_column:
+            return
+
+        # 上位5言語を表示
+        sorted_langs = sorted(self.lang_stats.items(), key=lambda x: x[1], reverse=True)[:5]
+        total = sum(self.lang_stats.values())
+
+        self.lang_stats_column.controls.clear()
+
+        if not sorted_langs:
+            self.lang_stats_column.controls.append(
+                ft.Text("データなし", size=12, color=ft.Colors.GREY_500)
+            )
+        else:
+            for lang, count in sorted_langs:
+                percentage = (count / total * 100) if total > 0 else 0
+                self.lang_stats_column.controls.append(
+                    ft.Row([
+                        ft.Text(lang.upper(), size=11, weight=ft.FontWeight.BOLD, width=35),
+                        ft.ProgressBar(
+                            value=percentage / 100,
+                            width=100,
+                            color=ft.Colors.BLUE_400,
+                            bgcolor=ft.Colors.GREY_300,
+                        ),
+                        ft.Text(f"{count} ({percentage:.1f}%)", size=10, color=ft.Colors.GREY_600),
+                    ], spacing=5)
+                )
+
+        self.page.update()
+
+    def _start_connection_timer(self):
+        """接続時間タイマーを開始"""
+        if self._connection_timer_running:
+            return
+
+        self._connection_timer_running = True
+        self.page.run_task(self._update_connection_time)
+
+    async def _update_connection_time(self):
+        """接続時間を定期的に更新"""
+        while self._connection_timer_running and self.connection_start_time:
+            try:
+                elapsed = datetime.now() - self.connection_start_time
+                hours, remainder = divmod(int(elapsed.total_seconds()), 3600)
+                minutes, seconds = divmod(remainder, 60)
+                time_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+                if self.connection_time_text:
+                    self.connection_time_text.value = time_str
+                    self.page.update()
+
+                await asyncio.sleep(1)
+            except Exception:
+                break
+
+    def _export_log(self, e):
+        """翻訳ログをファイルに出力"""
+        if not self.messages:
+            self._log_message("エクスポートするメッセージがありません")
+            return
+
+        # ファイル保存ダイアログを開く
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_filename = f"translation_log_{timestamp}.txt"
+
+        self.file_picker.save_file(
+            dialog_title="翻訳ログの保存",
+            file_name=default_filename,
+            allowed_extensions=["txt", "csv"],
+        )
+
+    def _on_file_picker_result(self, e: ft.FilePickerResultEvent):
+        """ファイルピッカー結果コールバック"""
+        if not e.path:
+            return
+
+        try:
+            file_path = e.path
+
+            # 拡張子に応じて出力形式を変更
+            if file_path.endswith(".csv"):
+                self._export_as_csv(file_path)
+            else:
+                self._export_as_txt(file_path)
+
+            self._log_message(f"ログを保存しました: {os.path.basename(file_path)}")
+
+        except Exception as ex:
+            self._log_message(f"ログ保存エラー: {ex}")
+
+    def _export_as_txt(self, file_path: str):
+        """テキスト形式でエクスポート"""
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("=" * 60 + "\n")
+            f.write("twitchTransFreeNeo 翻訳ログ\n")
+            f.write(f"出力日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"メッセージ数: {len(self.messages)}\n")
+            f.write("=" * 60 + "\n\n")
+
+            for msg in self.messages:
+                f.write(f"[{msg.timestamp.strftime('%H:%M:%S')}] {msg.user} ({msg.lang})\n")
+                f.write(f"  原文: {msg.text}\n")
+                if msg.translation:
+                    f.write(f"  翻訳: {msg.translation}\n")
+                f.write("\n")
+
+    def _export_as_csv(self, file_path: str):
+        """CSV形式でエクスポート"""
+        import csv
+
+        with open(file_path, "w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["時刻", "ユーザー", "言語", "原文", "翻訳"])
+
+            for msg in self.messages:
+                writer.writerow([
+                    msg.timestamp.strftime("%H:%M:%S"),
+                    msg.user,
+                    msg.lang or "",
+                    msg.text,
+                    msg.translation or "",
+                ])
 
     def _clear_chat(self, e):
         """チャットクリア"""
@@ -552,7 +910,10 @@ class MainWindow:
         self.messages.clear()
         self.filtered_messages.clear()
         self.chat_list.controls.clear()
+        self.lang_stats.clear()  # 言語統計もクリア
+        self.message_timestamps.clear()  # メッセージレートもクリア
         self._update_message_stats()
+        self._update_lang_stats()
         self.page.update()
 
     def _clear_log(self, e):
@@ -675,20 +1036,23 @@ class MainWindow:
 - YouTube Live: 動画IDが必要（OAuth認証で投稿も可能）
 - 同時配信: TwitchとYouTube両方を監視
 
-【Twitch設定】
-- Twitchチャンネル名
-- 翻訳bot用ユーザー名
-- OAuthトークン
-
-【YouTube Live設定】
-- YouTube動画ID（URLでも可）
-- Client ID / Client Secret（投稿する場合）
+【キーボードショートカット】
+- Ctrl+R: 接続/切断
+- Ctrl+,: 設定を開く
+- Ctrl+E: ログをエクスポート
+- Ctrl+L: ログをクリア
+- Ctrl+D: 診断を開く
+- Ctrl+T: テーマ切り替え
+- Ctrl+Delete: チャット履歴をクリア
+- F1: ヘルプを表示
 
 【機能】
 - リアルタイム翻訳（60以上の言語対応）
 - 翻訳結果のチャット投稿
 - フィルタリング・検索機能
 - TTS（音声読み上げ）
+- メッセージコピー機能
+- 言語別統計表示
 """
 
         def close_help_dialog(e):
@@ -762,6 +1126,49 @@ class MainWindow:
 
         # 設定保存
         self.config_manager.save_config()
+
+    def _toggle_theme(self, e):
+        """テーマ（ダーク/ライト）を切り替え"""
+        if self.page.theme_mode == ft.ThemeMode.LIGHT:
+            self.page.theme_mode = ft.ThemeMode.DARK
+            self._log_message("ダークモードに切り替えました")
+        else:
+            self.page.theme_mode = ft.ThemeMode.LIGHT
+            self._log_message("ライトモードに切り替えました")
+        self.page.update()
+
+    def _on_keyboard_event(self, e: ft.KeyboardEvent):
+        """キーボードショートカット処理"""
+        # Ctrlキーが押されている場合
+        if e.ctrl:
+            if e.key == "Q" or e.key == "q":
+                # Ctrl+Q: 終了
+                self.page.window.close()
+            elif e.key == "," or e.key == "Comma":
+                # Ctrl+,: 設定を開く
+                self._open_settings(None)
+            elif e.key == "R" or e.key == "r":
+                # Ctrl+R: 接続/切断トグル
+                self._toggle_connection(None)
+            elif e.key == "L" or e.key == "l":
+                # Ctrl+L: ログクリア
+                self._clear_log(None)
+            elif e.key == "D" or e.key == "d":
+                # Ctrl+D: 診断を開く
+                self._open_diagnostics(None)
+            elif e.key == "E" or e.key == "e":
+                # Ctrl+E: ログエクスポート
+                self._export_log(None)
+            elif e.key == "Delete":
+                # Ctrl+Delete: チャット履歴クリア
+                self._clear_chat(None)
+            elif e.key == "T" or e.key == "t":
+                # Ctrl+T: テーマ切り替え
+                self._toggle_theme(None)
+
+        # F1キー: ヘルプ
+        elif e.key == "F1":
+            self._show_help(None)
 
     def run(self):
         """アプリケーション実行"""
