@@ -453,7 +453,7 @@ class MainWindow:
 
         return ft.Container(
             content=ft.Row([
-                ft.Icon(ft.Icons.QUICK_REPLY, size=16, color=ft.Colors.GREY_600),
+                ft.Icon(ft.Icons.REPLY, size=16, color=ft.Colors.GREY_600),
                 ft.Text("クイック返信:", size=12, color=ft.Colors.GREY_600),
                 *quick_reply_buttons,
                 ft.Container(expand=True),
