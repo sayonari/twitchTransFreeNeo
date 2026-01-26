@@ -32,15 +32,17 @@ try:
     from .translator import TranslationEngine, LanguageDetector
     from .database import TranslationDatabase
     from .tts import TTSEngine
+    from .youtube_auth import YouTubeAuthManager, GOOGLE_AUTH_AVAILABLE
 except ImportError:
     from twitchTransFreeNeo.core.chat_monitor import ChatMessage, MessageProcessor
     from twitchTransFreeNeo.core.translator import TranslationEngine, LanguageDetector
     from twitchTransFreeNeo.core.database import TranslationDatabase
     from twitchTransFreeNeo.core.tts import TTSEngine
+    from twitchTransFreeNeo.core.youtube_auth import YouTubeAuthManager, GOOGLE_AUTH_AVAILABLE
 
 
 class YouTubeChatMonitor:
-    """YouTube Liveチャット監視クラス"""
+    """YouTube Liveチャット監視クラス（読み取り＋書き込み対応）"""
 
     def __init__(self, config: Dict[str, Any], message_callback: Callable[[ChatMessage], None]):
         self.config = config
@@ -57,6 +59,30 @@ class YouTubeChatMonitor:
         self._monitor_thread = None
 
         self.video_id = config.get("youtube_video_id", "")
+
+        # YouTube認証マネージャー（投稿用）
+        self.auth_manager: Optional[YouTubeAuthManager] = None
+        self.live_chat_id: Optional[str] = None
+        self.can_post = False  # 投稿可能かどうか
+
+        # 表示のみモードかチェック
+        self.view_only_mode = config.get("view_only_mode", False)
+
+        # 認証情報があれば初期化
+        if not self.view_only_mode and GOOGLE_AUTH_AVAILABLE:
+            self._init_auth_manager()
+
+    def _init_auth_manager(self):
+        """認証マネージャーを初期化"""
+        try:
+            self.auth_manager = YouTubeAuthManager(self.config)
+            if self.auth_manager.is_authenticated():
+                print("[INFO] YouTube認証済み: 投稿機能が利用可能です")
+            else:
+                print("[INFO] YouTube未認証: 読み取り専用モードで動作します")
+        except Exception as e:
+            print(f"[WARNING] YouTube認証マネージャー初期化エラー: {e}")
+            self.auth_manager = None
 
     def start(self):
         """チャット監視を開始"""
@@ -76,6 +102,9 @@ class YouTubeChatMonitor:
             # TTSエンジンを開始
             self.tts_engine.start()
 
+            # 投稿機能の初期化（認証済みの場合）
+            self._init_posting()
+
             # 非同期ループを取得または作成
             try:
                 self._loop = asyncio.get_running_loop()
@@ -87,7 +116,8 @@ class YouTubeChatMonitor:
             self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
             self._monitor_thread.start()
 
-            print(f"[INFO] YouTube Live チャット監視を開始しました")
+            mode = "投稿可能" if self.can_post else "読み取り専用"
+            print(f"[INFO] YouTube Live チャット監視を開始しました ({mode})")
             return True
 
         except Exception as e:
@@ -95,6 +125,33 @@ class YouTubeChatMonitor:
             import traceback
             traceback.print_exc()
             return False
+
+    def _init_posting(self):
+        """投稿機能を初期化"""
+        if self.view_only_mode:
+            print("[INFO] 表示のみモード: 投稿機能は無効です")
+            self.can_post = False
+            return
+
+        if not self.auth_manager:
+            print("[INFO] 認証なし: 投稿機能は無効です")
+            self.can_post = False
+            return
+
+        if not self.auth_manager.is_authenticated():
+            print("[INFO] 未認証: 投稿機能は無効です")
+            self.can_post = False
+            return
+
+        # ライブチャットIDを取得
+        live_chat_id, error = self.auth_manager.get_live_chat_id(self.video_id)
+        if live_chat_id:
+            self.live_chat_id = live_chat_id
+            self.can_post = True
+            print(f"[INFO] ライブチャットID取得成功: {live_chat_id[:20]}...")
+        else:
+            print(f"[WARNING] ライブチャットID取得失敗: {error}")
+            self.can_post = False
 
     def _monitor_loop(self):
         """チャット監視ループ（別スレッド）"""
@@ -207,7 +264,37 @@ class YouTubeChatMonitor:
         # TTS読み上げ（TTS設定が有効な場合）
         self._add_tts_messages(chat_message)
 
-        # YouTubeはチャット投稿機能なし（読み取り専用）
+        # チャットに投稿（投稿可能な場合）
+        if self.can_post and not self.view_only_mode:
+            self._post_translation(chat_message)
+
+    def _post_translation(self, chat_message: ChatMessage):
+        """翻訳結果をYouTubeチャットに投稿"""
+        if not self.can_post or not self.auth_manager or not self.live_chat_id:
+            return
+
+        try:
+            # 投稿フォーマットを作成
+            post_format = self.config.get("post_format", "[{lang}] {text}")
+            message_text = post_format.format(
+                user=chat_message.user,
+                lang=chat_message.target_lang,
+                text=chat_message.translation
+            )
+
+            # メッセージ長制限（YouTube Live チャットは200文字制限）
+            max_length = 200
+            if len(message_text) > max_length:
+                message_text = message_text[:max_length - 3] + "..."
+
+            # YouTube チャットに投稿
+            success, error = self.auth_manager.send_message(self.live_chat_id, message_text)
+
+            if not success:
+                print(f"[WARNING] YouTube投稿失敗: {error}")
+
+        except Exception as e:
+            print(f"[ERROR] YouTube投稿エラー: {e}")
 
     def _clean_message(self, message: str) -> str:
         """メッセージをクリーニング"""

@@ -1,6 +1,6 @@
 [project]
 name = "twitchTransFreeNeo"
-version = "0.2.13-beta"
+version = "0.2.14-beta"
 description = "Next Generation Twitch Chat Translator - GUI版Twitchチャット翻訳ツール（Flet版）"
 authors = [
     {name = "sayonari"}
@@ -20,6 +20,9 @@ dependencies = [
     "Pillow>=9.0.0",
     "flet[all]>=0.27.0",
     "pytchat>=0.5.5",
+    "google-auth>=2.47.0",
+    "google-auth-oauthlib>=1.2.4",
+    "google-api-python-client>=2.188.0",
 ]
 
 [project.optional-dependencies]

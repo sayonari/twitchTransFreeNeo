@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube OAuth 設定ガイド - twitchTransFreeNeo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            line-height: 1.8;
+        }
+        h1 {
+            color: #ff0000;
+            text-align: center;
+            border-bottom: 3px solid #ff0000;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #ff4444;
+            margin-top: 40px;
+            padding-left: 10px;
+            border-left: 4px solid #ff0000;
+        }
+        h3 {
+            color: #ff6666;
+            margin-top: 25px;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .logo img {
+            width: 80px;
+            height: 80px;
+        }
+        .warning-box {
+            background: rgba(255, 152, 0, 0.2);
+            border: 2px solid #ff9800;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+        .warning-box h3 {
+            color: #ff9800;
+            margin-top: 0;
+        }
+        .info-box {
+            background: rgba(33, 150, 243, 0.2);
+            border: 2px solid #2196f3;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+        .info-box h3 {
+            color: #2196f3;
+            margin-top: 0;
+        }
+        .success-box {
+            background: rgba(76, 175, 80, 0.2);
+            border: 2px solid #4caf50;
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin: 20px 0;
+        }
+        .success-box h3 {
+            color: #4caf50;
+            margin-top: 0;
+        }
+        .step {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .step-number {
+            display: inline-block;
+            background: #ff0000;
+            color: white;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 32px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        .step-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #ffffff;
+        }
+        a {
+            color: #64b5f6;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+            color: #90caf9;
+        }
+        .button {
+            display: inline-block;
+            background: #ff0000;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 10px 5px;
+            transition: all 0.3s;
+        }
+        .button:hover {
+            background: #cc0000;
+            text-decoration: none;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 0, 0, 0.3);
+        }
+        .button-secondary {
+            background: #424242;
+        }
+        .button-secondary:hover {
+            background: #616161;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            color: #80cbc4;
+        }
+        ul, ol {
+            padding-left: 25px;
+        }
+        li {
+            margin: 10px 0;
+        }
+        .screenshot {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 15px 0;
+            text-align: center;
+            color: #888;
+            font-style: italic;
+        }
+        .copy-field {
+            display: flex;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        .copy-field input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #444;
+            border-radius: 4px;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            font-family: monospace;
+        }
+        .copy-btn {
+            padding: 10px 15px;
+            background: #424242;
+            border: none;
+            border-radius: 4px;
+            color: white;
+            cursor: pointer;
+        }
+        .copy-btn:hover {
+            background: #616161;
+        }
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: #888;
+        }
+        .faq {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding: 15px 20px;
+            margin: 15px 0;
+        }
+        .faq-q {
+            font-weight: bold;
+            color: #ff6666;
+        }
+        .faq-a {
+            margin-top: 8px;
+            padding-left: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="#ff0000">
+            <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+        </svg>
+    </div>
+
+    <h1>YouTube OAuth 設定ガイド</h1>
+    <p style="text-align: center; font-size: 1.1em;">twitchTransFreeNeo で YouTube Live チャットに翻訳を投稿するための設定方法</p>
+
+    <div class="info-box">
+        <h3>このページについて</h3>
+        <p>twitchTransFreeNeoでYouTube Liveのチャットに翻訳を投稿するには、YouTube Data API v3のOAuth認証が必要です。このガイドでは、必要な「Client ID」と「Client Secret」の取得方法を説明します。</p>
+        <p><strong>所要時間:</strong> 約10〜15分</p>
+    </div>
+
+    <div class="warning-box">
+        <h3>読み取り専用モードについて</h3>
+        <p>OAuth認証を設定しなくても、YouTube Liveのチャットを<strong>読み取って翻訳表示</strong>することは可能です。チャットへの翻訳投稿が不要な場合は、この設定は不要です。</p>
+    </div>
+
+    <h2>事前準備</h2>
+    <ul>
+        <li>Googleアカウント（YouTubeで使用しているもの）</li>
+        <li>YouTube Liveで配信できる状態のチャンネル</li>
+    </ul>
+
+    <h2>設定手順</h2>
+
+    <div class="step">
+        <span class="step-number">1</span>
+        <span class="step-title">Google Cloud Console にアクセス</span>
+        <p>以下のボタンをクリックして、Google Cloud Console を開きます。</p>
+        <div class="button-container">
+            <a href="https://console.cloud.google.com/" target="_blank" class="button">Google Cloud Console を開く</a>
+        </div>
+        <p>初めての場合は、利用規約への同意が必要です。</p>
+    </div>
+
+    <div class="step">
+        <span class="step-number">2</span>
+        <span class="step-title">新しいプロジェクトを作成</span>
+        <ol>
+            <li>画面上部のプロジェクト選択ドロップダウンをクリック</li>
+            <li>「新しいプロジェクト」をクリック</li>
+            <li>プロジェクト名を入力（例: <code>twitchTransFreeNeo</code>）</li>
+            <li>「作成」をクリック</li>
+        </ol>
+        <div class="screenshot">[プロジェクト作成画面のスクリーンショット]</div>
+    </div>
+
+    <div class="step">
+        <span class="step-number">3</span>
+        <span class="step-title">YouTube Data API v3 を有効化</span>
+        <p>以下のボタンをクリックして、YouTube Data API v3 の有効化ページを開きます。</p>
+        <div class="button-container">
+            <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" class="button">YouTube Data API v3 を有効化</a>
+        </div>
+        <ol>
+            <li>作成したプロジェクトが選択されていることを確認</li>
+            <li>「有効にする」ボタンをクリック</li>
+        </ol>
+    </div>
+
+    <div class="step">
+        <span class="step-number">4</span>
+        <span class="step-title">OAuth 同意画面を設定</span>
+        <div class="button-container">
+            <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" class="button button-secondary">OAuth 同意画面を設定</a>
+        </div>
+        <ol>
+            <li>User Type で「外部」を選択し、「作成」をクリック</li>
+            <li>アプリ情報を入力:
+                <ul>
+                    <li><strong>アプリ名:</strong> <code>twitchTransFreeNeo</code></li>
+                    <li><strong>ユーザーサポートメール:</strong> 自分のメールアドレス</li>
+                    <li><strong>デベロッパーの連絡先:</strong> 自分のメールアドレス</li>
+                </ul>
+            </li>
+            <li>「保存して次へ」をクリック</li>
+            <li>スコープの設定は変更せず「保存して次へ」</li>
+            <li>テストユーザーに<strong>自分のGoogleアカウント</strong>を追加</li>
+            <li>「保存して次へ」で完了</li>
+        </ol>
+        <div class="info-box">
+            <h3>テストユーザーについて</h3>
+            <p>「外部」で作成したアプリは、テストユーザーとして追加されたGoogleアカウントのみが使用できます。自分のアカウントを必ず追加してください。</p>
+        </div>
+    </div>
+
+    <div class="step">
+        <span class="step-number">5</span>
+        <span class="step-title">OAuth クライアント ID を作成</span>
+        <div class="button-container">
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="button">認証情報ページを開く</a>
+        </div>
+        <ol>
+            <li>「+ 認証情報を作成」をクリック</li>
+            <li>「OAuth クライアント ID」を選択</li>
+            <li>アプリケーションの種類: <strong>「デスクトップアプリ」</strong>を選択</li>
+            <li>名前を入力（例: <code>twitchTransFreeNeo Desktop</code>）</li>
+            <li>「作成」をクリック</li>
+        </ol>
+    </div>
+
+    <div class="step">
+        <span class="step-number">6</span>
+        <span class="step-title">Client ID と Client Secret をコピー</span>
+        <p>作成が完了すると、以下の情報が表示されます：</p>
+        <ul>
+            <li><strong>クライアント ID</strong> - 長い文字列（.apps.googleusercontent.com で終わる）</li>
+            <li><strong>クライアント シークレット</strong> - 短い英数字の文字列</li>
+        </ul>
+        <p>これらを twitchTransFreeNeo の設定画面にコピー＆ペーストしてください。</p>
+        <div class="success-box">
+            <h3>設定完了！</h3>
+            <p>Client ID と Client Secret を twitchTransFreeNeo の「設定」→「基本設定」→「YouTube Live設定」に入力し、「YouTube認証を行う」ボタンをクリックしてください。</p>
+        </div>
+    </div>
+
+    <h2>twitchTransFreeNeo での設定</h2>
+    <ol>
+        <li>twitchTransFreeNeo を起動</li>
+        <li>「設定」ボタンをクリック</li>
+        <li>「基本設定」タブを選択</li>
+        <li>プラットフォームで「YouTube Live のみ」または「同時配信」を選択</li>
+        <li>「YouTube Client ID」に取得した Client ID を入力</li>
+        <li>「YouTube Client Secret」に取得した Client Secret を入力</li>
+        <li>「YouTube認証を行う」ボタンをクリック</li>
+        <li>ブラウザが開くので、Googleアカウントでログインして許可</li>
+        <li>「認証済み」と表示されれば完了！</li>
+    </ol>
+
+    <h2>よくある質問（FAQ）</h2>
+
+    <div class="faq">
+        <p class="faq-q">Q: 「このアプリは確認されていません」と表示されます</p>
+        <p class="faq-a">A: 自分で作成したアプリなので正常です。「詳細」→「（アプリ名）に移動（安全ではないページ）」をクリックして続行してください。</p>
+    </div>
+
+    <div class="faq">
+        <p class="faq-q">Q: 認証に失敗します</p>
+        <p class="faq-a">A: 以下を確認してください：
+            <ul>
+                <li>OAuth同意画面でテストユーザーに自分を追加したか</li>
+                <li>YouTube Data API v3が有効になっているか</li>
+                <li>Client IDとSecretが正しくコピーされているか</li>
+            </ul>
+        </p>
+    </div>
+
+    <div class="faq">
+        <p class="faq-q">Q: クォータ（quota）エラーが出ます</p>
+        <p class="faq-a">A: YouTube Data API には1日あたりの使用量制限があります。翻訳投稿の頻度が高すぎる場合に発生することがあります。しばらく待ってから再試行してください。</p>
+    </div>
+
+    <div class="faq">
+        <p class="faq-q">Q: 投稿せずに翻訳表示だけしたい</p>
+        <p class="faq-a">A: OAuth設定は不要です。動画IDだけ入力すれば、チャットの読み取りと翻訳表示が可能です。また、「表示のみモード」をオンにすることでも投稿を無効にできます。</p>
+    </div>
+
+    <h2>関連リンク</h2>
+    <div class="button-container">
+        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="button button-secondary">Google Cloud Console</a>
+        <a href="https://developers.google.com/youtube/v3/getting-started" target="_blank" class="button button-secondary">YouTube API 公式ドキュメント</a>
+        <a href="https://github.com/sayonari/twitchTransFreeNeo" target="_blank" class="button button-secondary">GitHub リポジトリ</a>
+    </div>
+
+    <footer>
+        <p>twitchTransFreeNeo - YouTube OAuth 設定ガイド</p>
+        <p>&copy; 2024-2025 さあたん / 西村良太</p>
+        <p><a href="https://github.com/sayonari/twitchTransFreeNeo">https://github.com/sayonari/twitchTransFreeNeo</a></p>
+    </footer>
+</body>
+</html>

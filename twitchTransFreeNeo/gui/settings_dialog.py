@@ -80,6 +80,9 @@ class SettingsDialog:
         # プラットフォーム設定
         self.platform_dropdown: Optional[ft.Dropdown] = None
         self.youtube_video_id_field: Optional[ft.TextField] = None
+        self.youtube_client_id_field: Optional[ft.TextField] = None
+        self.youtube_client_secret_field: Optional[ft.TextField] = None
+        self.youtube_auth_status_text: Optional[ft.Text] = None
         self.youtube_container: Optional[ft.Container] = None
 
         # フィルタ設定
@@ -233,7 +236,7 @@ class SettingsDialog:
             ft.Column([
                 self.platform_dropdown,
                 ft.Text(
-                    "※ YouTubeは読み取り専用（翻訳投稿はTwitchのみ）\n※ 同時配信では両方のチャットを監視・翻訳します",
+                    "※ YouTubeはOAuth認証で翻訳投稿も可能（未認証時は読み取り専用）\n※ 同時配信では両方のチャットを監視・翻訳します",
                     size=11, color=ft.Colors.GREY_600,
                 ),
             ], spacing=4),
@@ -297,10 +300,64 @@ class SettingsDialog:
             width=400,
         )
 
+        # YouTube OAuth認証設定
+        self.youtube_client_id_field = ft.TextField(
+            label="YouTube Client ID",
+            value=self.config.get("youtube_client_id", ""),
+            hint_text="Google Cloud Consoleで取得",
+            prefix_icon=ft.Icons.FINGERPRINT,
+            width=400,
+        )
+
+        self.youtube_client_secret_field = ft.TextField(
+            label="YouTube Client Secret",
+            value=self.config.get("youtube_client_secret", ""),
+            password=True,
+            can_reveal_password=True,
+            hint_text="Google Cloud Consoleで取得",
+            prefix_icon=ft.Icons.KEY,
+            width=400,
+        )
+
+        # 認証状態の表示
+        auth_status = self._check_youtube_auth_status()
+        self.youtube_auth_status_text = ft.Text(
+            auth_status,
+            size=12,
+            color=ft.Colors.GREEN_700 if "認証済み" in auth_status else ft.Colors.GREY_600,
+        )
+
+        youtube_auth_button = ft.ElevatedButton(
+            "YouTube認証を行う",
+            icon=ft.Icons.LOGIN,
+            on_click=self._start_youtube_auth,
+            style=ft.ButtonStyle(bgcolor=ft.Colors.RED_700, color=ft.Colors.WHITE),
+        )
+
+        youtube_revoke_button = ft.OutlinedButton(
+            "認証を取り消す",
+            icon=ft.Icons.LOGOUT,
+            on_click=self._revoke_youtube_auth,
+        )
+
+        youtube_console_button = ft.ElevatedButton(
+            "Google Cloud Console",
+            icon=ft.Icons.OPEN_IN_NEW,
+            on_click=lambda e: webbrowser.open("https://console.cloud.google.com/apis/credentials"),
+            tooltip="OAuth認証情報を作成するページを開く",
+        )
+
+        youtube_api_enable_button = ft.OutlinedButton(
+            "YouTube API有効化",
+            icon=ft.Icons.PLAY_CIRCLE,
+            on_click=lambda e: webbrowser.open("https://console.cloud.google.com/apis/library/youtube.googleapis.com"),
+            tooltip="YouTube Data API v3を有効にする",
+        )
+
         youtube_help_button = ft.ElevatedButton(
-            "動画IDの確認方法",
+            "設定ガイド",
             icon=ft.Icons.HELP_OUTLINE,
-            on_click=lambda e: webbrowser.open("https://support.google.com/youtube/answer/171780"),
+            on_click=lambda e: webbrowser.open("https://www.sayonari.com/trans_asr/oauth/youtube/"),
         )
 
         self.youtube_container = ft.Container(
@@ -313,21 +370,50 @@ class SettingsDialog:
                         "URLから自動的に動画IDを抽出します\n例: https://www.youtube.com/watch?v=XXXXXXXXXXX",
                         size=11, color=ft.Colors.GREY_600,
                     ),
-                    youtube_help_button,
+                    ft.Divider(height=1),
+                    ft.Text("OAuth認証設定（翻訳投稿機能を使う場合）", weight=ft.FontWeight.W_500, size=13),
+                    self.youtube_client_id_field,
+                    self.youtube_client_secret_field,
+                    ft.Row([
+                        youtube_auth_button,
+                        youtube_revoke_button,
+                    ], spacing=8),
+                    self.youtube_auth_status_text,
+                    ft.Container(
+                        content=ft.Column([
+                            ft.Text("OAuth認証情報の取得方法:", weight=ft.FontWeight.W_500, size=12),
+                            ft.Text(
+                                "1. Google Cloud Consoleでプロジェクトを作成\n"
+                                "2. YouTube Data API v3を有効化\n"
+                                "3. OAuth同意画面を設定（テスト用でOK）\n"
+                                "4. OAuth 2.0 クライアントIDを作成（デスクトップアプリ）\n"
+                                "5. Client IDとClient Secretをコピー",
+                                size=11, color=ft.Colors.GREY_700,
+                            ),
+                            ft.Row([
+                                youtube_console_button,
+                                youtube_api_enable_button,
+                                youtube_help_button,
+                            ], wrap=True, spacing=8),
+                        ], spacing=4),
+                        bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.BLUE),
+                        padding=10,
+                        border_radius=4,
+                    ),
                     ft.Container(
                         content=ft.Row([
-                            ft.Icon(ft.Icons.INFO, size=16, color=ft.Colors.AMBER_700),
+                            ft.Icon(ft.Icons.INFO, size=16, color=ft.Colors.GREEN_700),
                             ft.Text(
-                                "YouTube Liveは読み取り専用です（APIキー不要）",
-                                size=12, color=ft.Colors.AMBER_700,
+                                "OAuth未設定の場合は読み取り専用で動作します（APIキー不要）",
+                                size=12, color=ft.Colors.GREEN_700,
                             ),
                         ], spacing=4),
-                        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER),
+                        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.GREEN),
                         padding=8,
                         border_radius=4,
                     ),
                 ], spacing=8),
-                helper_text="ライブ配信の動画IDまたはURLを入力"
+                helper_text="ライブ配信の動画IDと認証設定"
             ),
             visible=(current_platform in ["youtube", "both"]),
         )
@@ -912,6 +998,8 @@ class SettingsDialog:
         youtube_input = self.youtube_video_id_field.value.strip()
         # URLから動画IDを抽出
         updated["youtube_video_id"] = self._extract_youtube_video_id(youtube_input)
+        updated["youtube_client_id"] = self.youtube_client_id_field.value.strip()
+        updated["youtube_client_secret"] = self.youtube_client_secret_field.value.strip()
 
         # 表示設定
         updated["trans_text_color"] = self.color_dropdown.value
@@ -1012,3 +1100,92 @@ class SettingsDialog:
         """ダイアログを閉じる"""
         if self.dialog:
             self.page.close(self.dialog)
+
+    # === YouTube OAuth関連メソッド ===
+
+    def _check_youtube_auth_status(self) -> str:
+        """YouTube認証状態をチェック"""
+        try:
+            from ..core.youtube_auth import YouTubeAuthManager, GOOGLE_AUTH_AVAILABLE
+            if not GOOGLE_AUTH_AVAILABLE:
+                return "⚠️ Google認証ライブラリが未インストール"
+
+            auth_manager = YouTubeAuthManager(self.config)
+            if auth_manager.is_authenticated():
+                return "✅ 認証済み（投稿機能が利用可能）"
+            elif auth_manager.has_credentials():
+                return "⚠️ 認証情報は設定済み（認証ボタンを押してください）"
+            else:
+                return "ℹ️ 未設定（Client IDとSecretを入力してください）"
+        except Exception as e:
+            return f"⚠️ 認証状態の確認エラー: {e}"
+
+    def _start_youtube_auth(self, e):
+        """YouTube OAuth認証を開始"""
+        # まず設定を保存（Client IDとSecretを反映）
+        client_id = self.youtube_client_id_field.value.strip()
+        client_secret = self.youtube_client_secret_field.value.strip()
+
+        if not client_id or not client_secret:
+            self._show_auth_error("Client IDとClient Secretを入力してください")
+            return
+
+        try:
+            from ..core.youtube_auth import YouTubeAuthManager, GOOGLE_AUTH_AVAILABLE
+
+            if not GOOGLE_AUTH_AVAILABLE:
+                self._show_auth_error("Google認証ライブラリが利用できません。\npip install google-auth google-auth-oauthlib google-api-python-client")
+                return
+
+            # 一時的にconfigを更新
+            temp_config = self.config.copy()
+            temp_config["youtube_client_id"] = client_id
+            temp_config["youtube_client_secret"] = client_secret
+
+            auth_manager = YouTubeAuthManager(temp_config)
+
+            # 認証状態を更新
+            self.youtube_auth_status_text.value = "🔄 認証中...ブラウザで認証してください"
+            self.youtube_auth_status_text.color = ft.Colors.BLUE_700
+            self.page.update()
+
+            # 非同期で認証を実行（ブラウザが開く）
+            def auth_callback(success, message):
+                if success:
+                    self.youtube_auth_status_text.value = "✅ 認証成功！"
+                    self.youtube_auth_status_text.color = ft.Colors.GREEN_700
+                else:
+                    self.youtube_auth_status_text.value = f"❌ 認証失敗: {message}"
+                    self.youtube_auth_status_text.color = ft.Colors.RED_700
+                self.page.update()
+
+            auth_manager.authenticate_async(auth_callback)
+
+        except Exception as ex:
+            self._show_auth_error(f"認証開始エラー: {ex}")
+
+    def _revoke_youtube_auth(self, e):
+        """YouTube認証を取り消す"""
+        try:
+            from ..core.youtube_auth import YouTubeAuthManager, GOOGLE_AUTH_AVAILABLE
+
+            if not GOOGLE_AUTH_AVAILABLE:
+                return
+
+            auth_manager = YouTubeAuthManager(self.config)
+            if auth_manager.revoke_credentials():
+                self.youtube_auth_status_text.value = "ℹ️ 認証を取り消しました"
+                self.youtube_auth_status_text.color = ft.Colors.GREY_600
+            else:
+                self.youtube_auth_status_text.value = "⚠️ 認証取り消しに失敗しました"
+                self.youtube_auth_status_text.color = ft.Colors.AMBER_700
+            self.page.update()
+
+        except Exception as ex:
+            self._show_auth_error(f"認証取り消しエラー: {ex}")
+
+    def _show_auth_error(self, message: str):
+        """認証エラーを表示"""
+        self.youtube_auth_status_text.value = f"❌ {message}"
+        self.youtube_auth_status_text.color = ft.Colors.RED_700
+        self.page.update()

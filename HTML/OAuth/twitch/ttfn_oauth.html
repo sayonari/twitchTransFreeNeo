@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>TwitchTransFreeNext - OAuth認証</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+            line-height: 1.6;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .auth-button {
+            background: #6441a5;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1.1em;
+            text-decoration: none;
+            display: inline-block;
+            margin: 20px 0;
+        }
+        .auth-button:hover {
+            background: #7d5bbe;
+        }
+        .steps {
+            background: #f8f8f8;
+            padding: 20px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>TwitchTransFreeNext OAuth認証</h1>
+        <p>
+            現在Twitchにログインしているアカウントで認証されます。<br>
+            意図しないアカウントで認証される場合は、一度Twitchからログアウトしてください。
+        </p>
+        <p>
+            <a href="https://www.twitch.tv/logout" target="_blank" rel="noopener noreferrer">Twitchにログアウトしに行く</a>
+            （ログアウト後、下のボタンで認証を開始してください）
+        </p>
+        <a href="#" id="authButton" class="auth-button">Twitchアカウントで認証を開始する</a>
+        
+        <div class="steps">
+            <h2>認証手順</h2>
+            <ol>
+                <li>以下の「Twitchで認証する」ボタンをクリックします</li>
+                <li>Twitchのログインページが表示されたら、ログインしてください</li>
+                <li>権限の承認を求められたら「承認」をクリックしてください</li>
+                <li>認証が完了すると、トークン表示ページに移動します</li>
+                <li>表示されたトークンをTwitchTransFreeNextの config.py に入力してください</li>
+            </ol>
+            <BR>
+            <h2>Twitchチャット翻訳ちゃんについて</h2>
+            <ul>
+                <li>以下のページを参照のこと</li>
+                <li><a href="https://www.sayonari.com/trans_asr/index_trans.html">https://www.sayonari.com/trans_asr/index_trans.html</a></li>
+            </ul>
+        </div>
+
+        <div class="warning">
+            <h3>⚠️ 注意事項</h3>
+            <ul>
+                <li>この認証は TwitchTransFreeNext でチャットを読み書きするために必要です</li>
+                <li>取得したトークンは他人に見せたり共有したりしないでください</li>
+                <li>認証に問題がある場合は、再度このページにアクセスして認証をやり直してください</li>
+            </ul>
+        </div>
+
+    </div>
+
+    <script>
+        // 認証用URLを生成
+        window.onload = function() {
+            const clientId = 'yz7k9yayapc1uagpojw6f7fjjmmtc8'; // あなたのクライアントIDを設定
+            const redirectUri = encodeURIComponent('https://www.sayonari.com/trans_asr/ttfn_oauth_out.html'); // トークン表示ページのURLを設定
+            const scope = 'chat:read+chat:edit';
+            
+            const authUrl = `https://id.twitch.tv/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=token&scope=${scope}`;
+            
+            document.getElementById('authButton').href = authUrl;
+        };
+    </script>
+</body>
+</html>

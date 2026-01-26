@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>TwitchTransFreeNext - OAuth Token</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .token-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .token-display {
+            background: #f8f8f8;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        .copy-button {
+            background: #6441a5;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .copy-button:hover {
+            background: #7d5bbe;
+        }
+        .note {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>TwitchTransFreeNext OAuth Token</h1>
+    
+    <div class="token-container">
+        <h2>認証されたTwitchアカウント:</h2>
+        <div id="accountDisplay" class="token-display">
+            アカウント情報を取得中...
+        </div>
+        <h2>あなたのOAuthトークン:</h2>
+        <div id="tokenDisplay" class="token-display">
+            トークンを取得中...
+        </div>
+        <button onclick="copyToken()" class="copy-button">トークンをコピー</button>
+    </div>
+
+    <div class="note">
+        <p>このトークンは TwitchTransFreeNext で使用するものです。</p>
+        <p>⚠️ このトークンは他人に見せたり共有したりしないでください。</p>
+        <p>トークンをコピーしたら、このページは閉じて構いません。</p>
+    </div>
+
+    <script>
+        window.onload = async function() {
+            const clientId = 'yz7k9yayapc1uagpojw6f7fjjmmtc8'; // あなたのクライアントIDを設定
+            const hash = window.location.hash;
+            const token = new URLSearchParams(hash.slice(1)).get('access_token');
+            
+            if (token) {
+                document.getElementById('tokenDisplay').textContent = 'oauth:' + token;
+
+                // Twitch APIからユーザー情報を取得
+                try {
+                    const response = await fetch('https://api.twitch.tv/helix/users', {
+                        headers: {
+                            'Client-ID': clientId,
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    const data = await response.json();
+
+                    if (response.ok && data.data && data.data.length > 0) {
+                        const user = data.data[0];
+                        document.getElementById('accountDisplay').textContent = `ユーザー名: ${user.display_name} (ID: ${user.id})`;
+                    } else {
+                        document.getElementById('accountDisplay').textContent = 'アカウント情報の取得に失敗しました。';
+                        console.error('Twitch APIエラー:', data);
+                    }
+                } catch (error) {
+                    document.getElementById('accountDisplay').textContent = 'アカウント情報の取得中にエラーが発生しました。';
+                    console.error('API呼び出しエラー:', error);
+                }
+
+            } else {
+                document.getElementById('tokenDisplay').textContent = 'トークンが見つかりませんでした。認証をやり直してください。';
+                document.getElementById('accountDisplay').textContent = 'アカウント情報も取得できませんでした。';
+            }
+        };
+
+        function copyToken() {
+            const tokenText = document.getElementById('tokenDisplay').textContent;
+            navigator.clipboard.writeText(tokenText).then(function() {
+                alert('トークンをクリップボードにコピーしました！');
+            }).catch(function(err) {
+                alert('コピーに失敗しました。手動でコピーしてください。');
+                console.error('コピーに失敗:', err);
+            });
+        }
+    </script>
+</body>
+</html>
