@@ -193,6 +193,17 @@ class SettingsDialog:
                 title=ft.Row([
                     ft.Icon(ft.Icons.TUNE, color=ft.Colors.PRIMARY),
                     ft.Text("設定", weight=ft.FontWeight.BOLD),
+                    ft.Container(expand=True),  # スペーサー
+                    ft.IconButton(
+                        icon=ft.Icons.FILE_UPLOAD,
+                        tooltip="設定をインポート",
+                        on_click=self._import_settings,
+                    ),
+                    ft.IconButton(
+                        icon=ft.Icons.FILE_DOWNLOAD,
+                        tooltip="設定をエクスポート",
+                        on_click=self._export_settings,
+                    ),
                 ], spacing=8),
                 content=ft.Container(
                     content=self.tabs,
@@ -1272,4 +1283,208 @@ class SettingsDialog:
         """認証エラーを表示"""
         self.youtube_auth_status_text.value = f"❌ {message}"
         self.youtube_auth_status_text.color = ft.Colors.RED_700
+        self.page.update()
+
+    # === 設定インポート/エクスポート ===
+
+    def _export_settings(self, e):
+        """設定をJSONファイルにエクスポート"""
+        import json
+        from datetime import datetime
+
+        try:
+            # 現在の設定を取得
+            current_config = self._get_updated_config()
+
+            # セキュリティ上、機密情報を除外するオプション
+            export_config = current_config.copy()
+
+            # エクスポートするかどうか確認ダイアログ
+            def do_export(include_secrets: bool):
+                if not include_secrets:
+                    # 機密情報を除外
+                    sensitive_keys = ["trans_oauth", "youtube_client_secret", "deepl_api_key"]
+                    for key in sensitive_keys:
+                        if key in export_config:
+                            export_config[key] = ""
+
+                # ファイル名を生成
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"twitchTransFreeNeo_config_{timestamp}.json"
+
+                # JSONに変換
+                json_str = json.dumps(export_config, ensure_ascii=False, indent=2)
+
+                # ファイルピッカーを使用
+                def save_result(e: ft.FilePickerResultEvent):
+                    if e.path:
+                        try:
+                            with open(e.path, 'w', encoding='utf-8') as f:
+                                f.write(json_str)
+                            self._show_message("エクスポート完了", f"設定を保存しました:\n{e.path}")
+                        except Exception as ex:
+                            self._show_message("エクスポートエラー", f"ファイルの保存に失敗しました:\n{ex}")
+                    self.page.close(confirm_dialog)
+
+                file_picker = ft.FilePicker(on_result=save_result)
+                self.page.overlay.append(file_picker)
+                self.page.update()
+                file_picker.save_file(
+                    dialog_title="設定をエクスポート",
+                    file_name=filename,
+                    allowed_extensions=["json"],
+                )
+
+            def close_and_export_with_secrets(e):
+                self.page.close(confirm_dialog)
+                self.page.update()
+                do_export(True)
+
+            def close_and_export_without_secrets(e):
+                self.page.close(confirm_dialog)
+                self.page.update()
+                do_export(False)
+
+            def close_confirm(e):
+                self.page.close(confirm_dialog)
+                self.page.update()
+
+            confirm_dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("設定のエクスポート"),
+                content=ft.Column([
+                    ft.Text("設定ファイルをエクスポートします。"),
+                    ft.Container(
+                        content=ft.Row([
+                            ft.Icon(ft.Icons.WARNING, color=ft.Colors.AMBER),
+                            ft.Text(
+                                "OAuthトークンやAPIキーなどの機密情報を含めますか？\n"
+                                "含める場合、ファイルの取り扱いにご注意ください。",
+                                size=13,
+                            ),
+                        ], spacing=8),
+                        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER),
+                        padding=10,
+                        border_radius=5,
+                    ),
+                ], spacing=10, tight=True),
+                actions=[
+                    ft.TextButton("キャンセル", on_click=close_confirm),
+                    ft.OutlinedButton("機密情報を除外", on_click=close_and_export_without_secrets),
+                    ft.ElevatedButton("すべて含める", on_click=close_and_export_with_secrets),
+                ],
+            )
+            self.page.open(confirm_dialog)
+            self.page.update()
+
+        except Exception as ex:
+            self._show_message("エクスポートエラー", f"エクスポート中にエラーが発生しました:\n{ex}")
+
+    def _import_settings(self, e):
+        """JSONファイルから設定をインポート"""
+        import json
+
+        def on_file_picked(e: ft.FilePickerResultEvent):
+            if not e.files or len(e.files) == 0:
+                return
+
+            try:
+                file_path = e.files[0].path
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    imported_config = json.load(f)
+
+                # 設定を適用
+                self._apply_imported_config(imported_config)
+                self._show_message("インポート完了", "設定をインポートしました。\n「適用」または「OK」で保存してください。")
+
+            except json.JSONDecodeError:
+                self._show_message("インポートエラー", "無効なJSONファイルです。")
+            except Exception as ex:
+                self._show_message("インポートエラー", f"インポート中にエラーが発生しました:\n{ex}")
+
+        file_picker = ft.FilePicker(on_result=on_file_picked)
+        self.page.overlay.append(file_picker)
+        self.page.update()
+        file_picker.pick_files(
+            dialog_title="設定をインポート",
+            allowed_extensions=["json"],
+            allow_multiple=False,
+        )
+
+    def _apply_imported_config(self, imported_config: Dict[str, Any]):
+        """インポートした設定をUIに反映"""
+        # 基本設定
+        if "platform" in imported_config and self.platform_dropdown:
+            self.platform_dropdown.value = imported_config.get("platform", "twitch")
+        if "twitch_channel" in imported_config and self.channel_field:
+            self.channel_field.value = imported_config.get("twitch_channel", "")
+        if "trans_username" in imported_config and self.username_field:
+            self.username_field.value = imported_config.get("trans_username", "")
+        if "trans_oauth" in imported_config and self.oauth_field:
+            self.oauth_field.value = imported_config.get("trans_oauth", "")
+
+        # YouTube設定
+        if "youtube_video_id" in imported_config and self.youtube_video_id_field:
+            self.youtube_video_id_field.value = imported_config.get("youtube_video_id", "")
+        if "youtube_client_id" in imported_config and self.youtube_client_id_field:
+            self.youtube_client_id_field.value = imported_config.get("youtube_client_id", "")
+        if "youtube_client_secret" in imported_config and self.youtube_client_secret_field:
+            self.youtube_client_secret_field.value = imported_config.get("youtube_client_secret", "")
+
+        # 翻訳設定
+        if "lang_trans_to_home" in imported_config and self.home_lang_dropdown:
+            lang = imported_config.get("lang_trans_to_home", "ja")
+            lang_codes = [code for code, _ in self.SUPPORTED_LANGUAGES]
+            if lang in lang_codes:
+                self.home_lang_dropdown.value = lang
+                self.home_lang_custom_container.visible = False
+            else:
+                self.home_lang_dropdown.value = "custom"
+                self.home_lang_custom_field.value = lang
+                self.home_lang_custom_container.visible = True
+
+        if "lang_home_to_other" in imported_config and self.other_lang_dropdown:
+            lang = imported_config.get("lang_home_to_other", "en")
+            lang_codes = [code for code, _ in self.SUPPORTED_LANGUAGES]
+            if lang in lang_codes:
+                self.other_lang_dropdown.value = lang
+                self.other_lang_custom_container.visible = False
+            else:
+                self.other_lang_dropdown.value = "custom"
+                self.other_lang_custom_field.value = lang
+                self.other_lang_custom_container.visible = True
+
+        # 表示設定
+        if "trans_text_color" in imported_config and self.color_dropdown:
+            self.color_dropdown.value = imported_config.get("trans_text_color", "GoldenRod")
+        if "show_by_name" in imported_config and self.show_name_checkbox:
+            self.show_name_checkbox.value = imported_config.get("show_by_name", True)
+        if "show_by_lang" in imported_config and self.show_lang_checkbox:
+            self.show_lang_checkbox.value = imported_config.get("show_by_lang", True)
+
+        # その他
+        if "debug" in imported_config and self.debug_checkbox:
+            self.debug_checkbox.value = imported_config.get("debug", False)
+        if "auto_start" in imported_config and self.auto_start_checkbox:
+            self.auto_start_checkbox.value = imported_config.get("auto_start", False)
+        if "view_only_mode" in imported_config and self.view_only_checkbox:
+            self.view_only_checkbox.value = imported_config.get("view_only_mode", False)
+
+        # プラットフォーム表示を更新
+        self._on_platform_change()
+        self.page.update()
+
+    def _show_message(self, title: str, message: str):
+        """メッセージダイアログを表示"""
+        def close_dialog(e):
+            self.page.close(msg_dialog)
+            self.page.update()
+
+        msg_dialog = ft.AlertDialog(
+            modal=True,
+            title=ft.Text(title),
+            content=ft.Text(message),
+            actions=[ft.ElevatedButton("OK", on_click=close_dialog)],
+        )
+        self.page.open(msg_dialog)
         self.page.update()

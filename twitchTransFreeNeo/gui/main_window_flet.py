@@ -303,7 +303,11 @@ class MainWindow:
         # プラットフォームに応じた設定確認
         valid, errors = self._validate_config_for_platform(platform)
         if not valid:
-            await self._show_error_dialog("設定エラー", "\n".join(errors))
+            await self._show_error_dialog(
+                "設定エラー",
+                "\n".join(errors),
+                hint="「設定を開く」ボタンから必要な設定を入力してください。"
+            )
             return
 
         try:
@@ -323,7 +327,8 @@ class MainWindow:
                     twitch_success = False
                     self._log_message(f"Twitch接続エラー: {error_msg}")
                     if platform == "twitch":
-                        await self._show_error_dialog("接続エラー", error_msg or "Twitchへの接続に失敗しました")
+                        hint = self._get_twitch_error_hint(error_msg)
+                        await self._show_error_dialog("Twitch接続エラー", error_msg or "Twitchへの接続に失敗しました", hint=hint)
                         return
 
             # YouTube接続（youtube または both の場合）
@@ -332,19 +337,28 @@ class MainWindow:
                     youtube_success = False
                     self._log_message("YouTube接続エラー: pytchatが利用できません")
                     if platform == "youtube":
-                        await self._show_error_dialog("接続エラー", "pytchatライブラリが利用できません")
+                        await self._show_error_dialog(
+                            "YouTube接続エラー",
+                            "pytchatライブラリが利用できません",
+                            hint="アプリケーションの再インストールをお試しください。"
+                        )
                         return
                 else:
                     self.youtube_monitor = YouTubeChatMonitor(config, self._on_message_received)
                     if self.youtube_monitor.start():
                         video_id = config.get("youtube_video_id", "")
-                        status_parts.append(f"YouTube: {video_id}")
-                        self._log_message(f"YouTube Live '{video_id}' に接続しました")
+                        mode = "投稿可能" if self.youtube_monitor.can_post else "読み取り専用"
+                        status_parts.append(f"YouTube: {video_id} ({mode})")
+                        self._log_message(f"YouTube Live '{video_id}' に接続しました ({mode})")
                     else:
                         youtube_success = False
                         self._log_message("YouTube接続エラー: 接続に失敗しました")
                         if platform == "youtube":
-                            await self._show_error_dialog("接続エラー", "YouTube Liveへの接続に失敗しました")
+                            await self._show_error_dialog(
+                                "YouTube接続エラー",
+                                "YouTube Liveへの接続に失敗しました",
+                                hint="動画IDが正しいか、配信がライブ中か確認してください。\n動画IDは11文字の英数字です（例: dQw4w9WgXcQ）"
+                            )
                             return
 
             # 少なくとも1つ成功していれば接続状態とする
@@ -356,10 +370,20 @@ class MainWindow:
                 self.status_text.color = ft.Colors.GREEN
                 self.page.update()
             else:
-                await self._show_error_dialog("接続エラー", "すべてのプラットフォームへの接続に失敗しました")
+                await self._show_error_dialog(
+                    "接続エラー",
+                    "すべてのプラットフォームへの接続に失敗しました",
+                    hint="ネットワーク接続を確認し、設定を見直してください。"
+                )
 
         except Exception as e:
-            await self._show_error_dialog("接続エラー", f"接続中にエラーが発生しました: {e}")
+            error_str = str(e)
+            hint = None
+            if "network" in error_str.lower() or "connection" in error_str.lower():
+                hint = "インターネット接続を確認してください。"
+            elif "timeout" in error_str.lower():
+                hint = "接続がタイムアウトしました。しばらく待ってから再試行してください。"
+            await self._show_error_dialog("接続エラー", f"接続中にエラーが発生しました:\n{e}", hint=hint)
 
     def _validate_config_for_platform(self, platform: str) -> tuple:
         """プラットフォームに応じた設定確認"""
@@ -377,6 +401,26 @@ class MainWindow:
                 errors.append("YouTube動画IDが設定されていません")
 
         return (len(errors) == 0, errors)
+
+    def _get_twitch_error_hint(self, error_msg: str) -> str:
+        """Twitchエラーに応じたヒントを返す"""
+        if not error_msg:
+            return "チャンネル名とOAuthトークンを確認してください。"
+
+        error_lower = error_msg.lower()
+
+        if "oauth" in error_lower or "token" in error_lower or "auth" in error_lower:
+            return "OAuthトークンが無効または期限切れの可能性があります。\n「設定」→「OAuthトークンを取得」で新しいトークンを取得してください。"
+        elif "channel" in error_lower or "not found" in error_lower:
+            return "チャンネル名が正しいか確認してください。\nチャンネル名は大文字小文字を区別しません。"
+        elif "network" in error_lower or "connection" in error_lower:
+            return "インターネット接続を確認してください。"
+        elif "timeout" in error_lower:
+            return "接続がタイムアウトしました。Twitchサーバーが混雑している可能性があります。"
+        elif "ban" in error_lower or "suspend" in error_lower:
+            return "アカウントがBANまたは停止されている可能性があります。"
+        else:
+            return "チャンネル名とOAuthトークンが正しく設定されているか確認してください。"
 
     async def _disconnect(self):
         """接続停止"""
@@ -660,17 +704,52 @@ class MainWindow:
         self.page.open(dialog)
         self.page.update()
 
-    async def _show_error_dialog(self, title: str, message: str):
-        """エラーダイアログ表示"""
+    async def _show_error_dialog(self, title: str, message: str, hint: str = None):
+        """エラーダイアログ表示（ヒント付き）"""
         def close_dialog(e):
             self.page.close(dialog)
             self.page.update()
 
+        def open_settings(e):
+            self.page.close(dialog)
+            self.page.update()
+            self._open_settings(None)
+
+        content_controls = [
+            ft.Row([
+                ft.Icon(ft.Icons.ERROR_OUTLINE, color=ft.Colors.RED, size=40),
+                ft.Text(message, expand=True),
+            ], spacing=15),
+        ]
+
+        if hint:
+            content_controls.append(
+                ft.Container(
+                    content=ft.Row([
+                        ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, color=ft.Colors.AMBER, size=20),
+                        ft.Text(hint, color=ft.Colors.GREY_700, size=13, expand=True),
+                    ], spacing=8),
+                    bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER),
+                    padding=10,
+                    border_radius=5,
+                    margin=ft.margin.only(top=15),
+                )
+            )
+
         dialog = ft.AlertDialog(
             modal=True,
-            title=ft.Text(title),
-            content=ft.Text(message),
-            actions=[ft.TextButton("OK", on_click=close_dialog)],
+            title=ft.Row([
+                ft.Icon(ft.Icons.WARNING, color=ft.Colors.RED),
+                ft.Text(title, weight=ft.FontWeight.BOLD),
+            ], spacing=8),
+            content=ft.Container(
+                content=ft.Column(content_controls, spacing=0),
+                width=450,
+            ),
+            actions=[
+                ft.TextButton("設定を開く", on_click=open_settings),
+                ft.ElevatedButton("OK", on_click=close_dialog),
+            ],
         )
         self.page.open(dialog)
         self.page.update()
