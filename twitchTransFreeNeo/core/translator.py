@@ -47,6 +47,9 @@ class TranslationEngine:
             # deep-translatorのsingle_detection機能を使用
             detected = await asyncio.to_thread(single_detection, text, api_key=None)
 
+            # CJK言語の検証（APIの誤検出を補正）
+            detected = self._validate_cjk_detection(text, detected)
+
             if self.config.get("debug", False):
                 print(f"言語検出結果: {text[:30]}... → {detected}")
 
@@ -54,21 +57,71 @@ class TranslationEngine:
         except Exception as e:
             print(f"言語検出エラー: {e}")
             # フォールバック: 簡易的な言語推定
-            try:
-                # 日本語文字が含まれているかチェック
-                if any('\u3040' <= char <= '\u309f' or '\u30a0' <= char <= '\u30ff' or '\u4e00' <= char <= '\u9fff' for char in text):
-                    return 'ja'
-                # 韓国語文字チェック
-                elif any('\uac00' <= char <= '\ud7af' for char in text):
-                    return 'ko'
-                # 中国語文字チェック（簡体字）
-                elif any('\u4e00' <= char <= '\u9fff' for char in text):
-                    return 'zh-CN'
-                # デフォルトは英語
-                else:
-                    return 'en'
-            except:
-                return None
+            return self._fallback_detect_language(text)
+
+    def _validate_cjk_detection(self, text: str, detected: str) -> str:
+        """CJK言語検出の検証・補正"""
+        if not detected:
+            return detected
+
+        # ひらがな・カタカナの有無をチェック
+        has_hiragana = any('\u3040' <= c <= '\u309f' for c in text)
+        has_katakana = any('\u30a0' <= c <= '\u30ff' for c in text)
+        has_cjk = any('\u4e00' <= c <= '\u9fff' for c in text)
+
+        # 日本語と判定されたが、ひらがな・カタカナがない場合
+        if detected == 'ja' and has_cjk and not has_hiragana and not has_katakana:
+            # CJK文字のみ = 中国語の可能性が高い
+            return 'zh-CN'
+
+        # 中国語と判定されたが、ひらがな・カタカナがある場合
+        if detected in ['zh-CN', 'zh-TW', 'zh'] and (has_hiragana or has_katakana):
+            return 'ja'
+
+        return detected
+
+    def _fallback_detect_language(self, text: str) -> Optional[str]:
+        """フォールバック言語検出（ヒューリスティクス）"""
+        try:
+            # 各言語の文字カウント
+            has_hiragana = any('\u3040' <= c <= '\u309f' for c in text)
+            has_katakana = any('\u30a0' <= c <= '\u30ff' for c in text)
+            has_cjk = any('\u4e00' <= c <= '\u9fff' for c in text)
+            has_hangul = any('\uac00' <= c <= '\ud7af' or '\u1100' <= c <= '\u11ff' for c in text)
+
+            # 日本語: ひらがな or カタカナが含まれている
+            if has_hiragana or has_katakana:
+                return 'ja'
+
+            # 韓国語: ハングル文字が含まれている
+            if has_hangul:
+                return 'ko'
+
+            # CJK文字のみ（ひらがな・カタカナなし）= 中国語の可能性が高い
+            if has_cjk:
+                return 'zh-CN'
+
+            # 非ASCII文字の検出（その他の言語）
+            # キリル文字（ロシア語等）
+            if any('\u0400' <= c <= '\u04ff' for c in text):
+                return 'ru'
+
+            # アラビア文字
+            if any('\u0600' <= c <= '\u06ff' for c in text):
+                return 'ar'
+
+            # タイ文字
+            if any('\u0e00' <= c <= '\u0e7f' for c in text):
+                return 'th'
+
+            # デバナーガリー文字（ヒンディー語等）
+            if any('\u0900' <= c <= '\u097f' for c in text):
+                return 'hi'
+
+            # ラテン文字ベースの言語は区別が困難なため英語をデフォルトに
+            return 'en'
+        except:
+            return None
     
     async def translate_text(self, text: str, target_lang: str, source_lang: str = "auto") -> Optional[str]:
         """テキスト翻訳"""

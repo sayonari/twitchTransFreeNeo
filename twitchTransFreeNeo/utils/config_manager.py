@@ -145,13 +145,66 @@ class ConfigManager:
         try:
             if os.path.exists(self.config_file):
                 with open(self.config_file, 'r', encoding='utf-8') as f:
-                    loaded_config = json.load(f)
+                    content = f.read()
+
+                try:
+                    loaded_config = json.loads(content)
+                except json.JSONDecodeError as je:
+                    # JSON形式エラー - 末尾カンマなどを修正して再試行
+                    print(f"JSON形式エラー（修正を試みます）: {je}")
+                    fixed_content = self._fix_json_content(content)
+                    try:
+                        loaded_config = json.loads(fixed_content)
+                        print("JSON修正成功 - 修正後の設定を保存します")
+                        # 修正後の設定を保存
+                        self.config.update(loaded_config)
+                        self.save_config()
+                        return True
+                    except json.JSONDecodeError:
+                        print("JSON修正失敗 - デフォルト設定を使用します")
+                        return False
+
+                # 設定値の検証・修正（旧バージョンとの互換性）
+                loaded_config = self._validate_and_fix_config(loaded_config)
+
                 # デフォルト設定にマージ
                 self.config.update(loaded_config)
                 return True
         except Exception as e:
             print(f"設定ファイル読み込みエラー: {e}")
         return False
+
+    def _fix_json_content(self, content: str) -> str:
+        """JSONコンテンツの一般的なエラーを修正"""
+        import re
+
+        # 末尾カンマを削除（オブジェクト内）
+        # パターン: , の後に空白・改行があり、その後に } または ] がある
+        content = re.sub(r',(\s*[}\]])', r'\1', content)
+
+        return content
+
+    def _validate_and_fix_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """設定値を検証し、無効な値を修正（旧バージョン互換性）"""
+        # フォントサイズの範囲チェック (10-24)
+        if "font_size" in config:
+            font_size = config["font_size"]
+            if not isinstance(font_size, (int, float)) or font_size < 10:
+                config["font_size"] = 10
+                print(f"フォントサイズを最小値(10)に修正しました（元の値: {font_size}）")
+            elif font_size > 24:
+                config["font_size"] = 24
+                print(f"フォントサイズを最大値(24)に修正しました（元の値: {font_size}）")
+
+        # ウィンドウサイズの範囲チェック
+        if "window_width" in config:
+            if not isinstance(config["window_width"], int) or config["window_width"] < 800:
+                config["window_width"] = 1200
+        if "window_height" in config:
+            if not isinstance(config["window_height"], int) or config["window_height"] < 600:
+                config["window_height"] = 800
+
+        return config
     
     def save_config(self) -> bool:
         """設定ファイルを保存する"""

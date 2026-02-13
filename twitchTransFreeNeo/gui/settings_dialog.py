@@ -955,7 +955,9 @@ class SettingsDialog:
 
     def _create_gui_tab(self) -> ft.Container:
         """GUI設定タブ"""
+        # フォントサイズを有効範囲(10-24)に制限（旧バージョンとの互換性）
         current_font_size = self.config.get("font_size", 12)
+        current_font_size = max(10, min(24, current_font_size))
 
         font_size_text = ft.Text(f"フォントサイズ: {current_font_size}pt", size=14)
 

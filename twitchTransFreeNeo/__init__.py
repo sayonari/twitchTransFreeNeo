@@ -3,5 +3,5 @@ twitchTransFreeNeo - Next Generation Twitch Chat Translator
 GUI版Twitchチャット翻訳ツール（Flet版）
 """
 
-__version__ = "0.2.17_Beta"
+__version__ = "0.2.18_Beta"
 __author__ = "さあたん / 西村良太"
