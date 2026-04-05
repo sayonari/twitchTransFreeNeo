@@ -173,7 +173,23 @@ class YouTubeAuthManager:
             return True, "認証が完了しました"
 
         except Exception as e:
-            error_msg = f"認証エラー: {e}"
+            error_str = str(e)
+            if 'access_denied' in error_str or '403' in error_str:
+                error_msg = (
+                    "アクセスが拒否されました（403: access_denied）\n"
+                    "\n"
+                    "【原因】Google Cloud Console の OAuth 同意画面で、\n"
+                    "自分のGoogleアカウントが「テストユーザー」に\n"
+                    "追加されていない可能性があります。\n"
+                    "\n"
+                    "【対処法】\n"
+                    "1. Google Cloud Console を開く\n"
+                    "2.「OAuth 同意画面」→「テストユーザー」セクション\n"
+                    "3.「+ADD USERS」で自分のGmailアドレスを追加\n"
+                    "4. 保存後、再度認証を試してください"
+                )
+            else:
+                error_msg = f"認証エラー: {e}"
             print(f"[ERROR] {error_msg}")
             if callback:
                 callback(False, error_msg)

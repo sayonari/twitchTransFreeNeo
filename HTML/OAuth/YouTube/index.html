@@ -298,9 +298,16 @@
             <li>テストユーザーに<strong>自分のGoogleアカウント</strong>を追加</li>
             <li>「保存して次へ」で完了</li>
         </ol>
-        <div class="info-box">
-            <h3>テストユーザーについて</h3>
-            <p>「外部」で作成したアプリは、テストユーザーとして追加されたGoogleアカウントのみが使用できます。自分のアカウントを必ず追加してください。</p>
+        <div class="warning-box">
+            <h3>⚠ 最重要：テストユーザーの追加（この手順を忘れると認証できません）</h3>
+            <p>「外部」で作成したアプリは<strong>テストモード</strong>になっており、テストユーザーとして追加されたGoogleアカウント<strong>のみ</strong>が使用できます。</p>
+            <p><strong>自分のGoogleアカウント（Gmailアドレス）を必ず「テストユーザー」に追加してください。</strong></p>
+            <p>追加しないと <code>403: access_denied</code>（アクセスをブロック）エラーが発生します。</p>
+            <ol>
+                <li>OAuth同意画面の設定ページで「テストユーザー」セクションを開く</li>
+                <li>「+ ADD USERS」をクリック</li>
+                <li>自分のGmailアドレスを入力して保存</li>
+            </ol>
         </div>
     </div>
 
@@ -352,6 +359,18 @@
     <div class="faq">
         <p class="faq-q">Q: 「このアプリは確認されていません」と表示されます</p>
         <p class="faq-a">A: 自分で作成したアプリなので正常です。「詳細」→「（アプリ名）に移動（安全ではないページ）」をクリックして続行してください。</p>
+    </div>
+
+    <div class="faq">
+        <p class="faq-q">Q: 「アクセスをブロック」「403: access_denied」と表示されます</p>
+        <p class="faq-a">A: <strong>最もよくある原因は、テストユーザーに自分を追加していないことです。</strong>
+            <ol>
+                <li><a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank">OAuth同意画面</a>を開く</li>
+                <li>「テストユーザー」セクションで「+ ADD USERS」をクリック</li>
+                <li>自分のGmailアドレスを追加して保存</li>
+                <li>twitchTransFreeNeoに戻り、再度「YouTube認証を行う」をクリック</li>
+            </ol>
+        </p>
     </div>
 
     <div class="faq">
