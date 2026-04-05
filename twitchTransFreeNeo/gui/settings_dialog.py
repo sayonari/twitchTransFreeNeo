@@ -198,14 +198,14 @@ class SettingsDialog:
                     ft.Text("設定", weight=ft.FontWeight.BOLD),
                     ft.Container(expand=True),  # スペーサー
                     ft.IconButton(
-                        icon=ft.Icons.FILE_UPLOAD,
-                        tooltip="設定をインポート",
-                        on_click=self._import_settings,
+                        icon=ft.Icons.FILE_DOWNLOAD,
+                        tooltip="設定をエクスポート（保存）",
+                        on_click=self._export_settings,
                     ),
                     ft.IconButton(
-                        icon=ft.Icons.FILE_DOWNLOAD,
-                        tooltip="設定をエクスポート",
-                        on_click=self._export_settings,
+                        icon=ft.Icons.FILE_UPLOAD,
+                        tooltip="設定をインポート（適用）",
+                        on_click=self._import_settings,
                     ),
                 ], spacing=8),
                 content=ft.Container(
