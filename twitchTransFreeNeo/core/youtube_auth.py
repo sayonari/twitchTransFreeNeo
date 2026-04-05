@@ -153,13 +153,25 @@ class YouTubeAuthManager:
             flow = InstalledAppFlow.from_client_config(client_config, YOUTUBE_SCOPES)
 
             # ローカルサーバーで認証（ブラウザが開く）
-            # run_local_server はブロッキングなので別スレッドで実行することも可能
-            self.credentials = flow.run_local_server(
-                port=8080,
-                prompt='consent',
-                success_message='認証が完了しました。このウィンドウを閉じてください。',
-                open_browser=True
-            )
+            # ポートが使用中の場合は別のポートを試行
+            auth_ports = [8080, 8090, 9004, 0]  # 0 = OS自動割り当て
+            last_error = None
+            for port in auth_ports:
+                try:
+                    self.credentials = flow.run_local_server(
+                        port=port,
+                        prompt='consent',
+                        success_message='認証が完了しました。このウィンドウを閉じてください。',
+                        open_browser=True
+                    )
+                    last_error = None
+                    break
+                except OSError as port_err:
+                    last_error = port_err
+                    print(f"[WARNING] ポート {port} が使用中、次のポートを試行します")
+                    continue
+            if last_error:
+                raise last_error
 
             # トークンを保存
             self._save_credentials()
