@@ -379,7 +379,7 @@ class SettingsDialog:
         youtube_help_button = ft.ElevatedButton(
             "設定ガイド",
             icon=ft.Icons.HELP_OUTLINE,
-            on_click=lambda e: webbrowser.open("https://www.sayonari.com/trans_asr/oauth/youtube/"),
+            on_click=lambda e: webbrowser.open("https://www.sayonari.com/trans_asr/OAuth/YouTube/"),
         )
 
         self.youtube_container = ft.Container(

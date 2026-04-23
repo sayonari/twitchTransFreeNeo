@@ -280,33 +280,40 @@
 
     <div class="step">
         <span class="step-number">4</span>
-        <span class="step-title">OAuth 同意画面を設定</span>
-        <div class="button-container">
-            <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank" class="button button-secondary">OAuth 同意画面を設定</a>
+        <span class="step-title">Google Auth Platform を設定（旧「OAuth 同意画面」）</span>
+        <div class="info-box">
+            <h3>新UIについて（2025年以降）</h3>
+            <p>Google Cloud Console のUIが刷新され、「OAuth 同意画面」は「<strong>Google Auth Platform</strong>」という名前になりました。設定項目は以下のタブに分かれています：</p>
+            <ul>
+                <li><strong>ブランディング（Branding）</strong>：アプリ名・サポートメールなど</li>
+                <li><strong>対象（Audience）</strong>：公開ステータスとテストユーザー</li>
+                <li><strong>データアクセス（Data Access）</strong>：スコープ設定</li>
+                <li><strong>クライアント（Clients）</strong>：OAuth クライアントID</li>
+            </ul>
         </div>
+        <div class="button-container">
+            <a href="https://console.cloud.google.com/auth/overview" target="_blank" class="button button-secondary">Google Auth Platform を開く</a>
+        </div>
+        <h3>4-1. 初回セットアップ（「Get Started」）</h3>
         <ol>
-            <li>User Type で「外部」を選択し、「作成」をクリック</li>
-            <li>アプリ情報を入力:
-                <ul>
-                    <li><strong>アプリ名:</strong> <code>twitchTransFreeNeo</code></li>
-                    <li><strong>ユーザーサポートメール:</strong> 自分のメールアドレス</li>
-                    <li><strong>デベロッパーの連絡先:</strong> 自分のメールアドレス</li>
-                </ul>
-            </li>
-            <li>「保存して次へ」をクリック</li>
-            <li>スコープの設定は変更せず「保存して次へ」</li>
-            <li>テストユーザーに<strong>自分のGoogleアカウント</strong>を追加</li>
-            <li>「保存して次へ」で完了</li>
+            <li>「Get Started（始める）」をクリック</li>
+            <li><strong>アプリ名:</strong> <code>twitchTransFreeNeo</code> を入力</li>
+            <li><strong>ユーザーサポートメール:</strong> 自分のメールアドレスを選択</li>
+            <li><strong>対象（Audience）:</strong> <strong>「外部 (External)」</strong>を選択</li>
+            <li><strong>デベロッパーの連絡先:</strong> 自分のメールアドレスを入力</li>
+            <li>利用規約に同意して「作成」をクリック</li>
         </ol>
+        <h3>4-2. 「対象（Audience）」タブでテストユーザーを追加</h3>
         <div class="warning-box">
             <h3>⚠ 最重要：テストユーザーの追加（この手順を忘れると認証できません）</h3>
-            <p>「外部」で作成したアプリは<strong>テストモード</strong>になっており、テストユーザーとして追加されたGoogleアカウント<strong>のみ</strong>が使用できます。</p>
+            <p>「外部」で作成したアプリは<strong>公開ステータスが「テスト」</strong>となっており、テストユーザーとして追加されたGoogleアカウント<strong>のみ</strong>が使用できます。</p>
             <p><strong>自分のGoogleアカウント（Gmailアドレス）を必ず「テストユーザー」に追加してください。</strong></p>
             <p>追加しないと <code>403: access_denied</code>（アクセスをブロック）エラーが発生します。</p>
             <ol>
-                <li>OAuth同意画面の設定ページで「テストユーザー」セクションを開く</li>
-                <li>「+ ADD USERS」をクリック</li>
-                <li>自分のGmailアドレスを入力して保存</li>
+                <li>左メニューで「<strong>対象（Audience）</strong>」タブを開く</li>
+                <li>「テストユーザー（Test users）」セクションの「<strong>+ Add users</strong>」をクリック</li>
+                <li>自分の Gmail アドレスを入力して「保存」</li>
+                <li>複数アカウントがある場合は、認証に使うアカウント全てを追加</li>
             </ol>
         </div>
     </div>
@@ -315,11 +322,12 @@
         <span class="step-number">5</span>
         <span class="step-title">OAuth クライアント ID を作成</span>
         <div class="button-container">
-            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="button">認証情報ページを開く</a>
+            <a href="https://console.cloud.google.com/auth/clients" target="_blank" class="button">クライアント ページを開く（新UI）</a>
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="button button-secondary">認証情報ページ（旧UI）</a>
         </div>
         <ol>
-            <li>「+ 認証情報を作成」をクリック</li>
-            <li>「OAuth クライアント ID」を選択</li>
+            <li>左メニューから「<strong>クライアント（Clients）</strong>」タブを開く</li>
+            <li>「<strong>+ クライアントを作成（Create Client）</strong>」をクリック</li>
             <li>アプリケーションの種類: <strong>「デスクトップアプリ」</strong>を選択</li>
             <li>名前を入力（例: <code>twitchTransFreeNeo Desktop</code>）</li>
             <li>「作成」をクリック</li>
@@ -354,22 +362,43 @@
         <li>「認証済み」と表示されれば完了！</li>
     </ol>
 
+    <div class="warning-box">
+        <h3>⚠ 認証時に「このアプリは Google で確認されていません」が表示された場合</h3>
+        <p>これは<strong>エラーではなく、自作OAuthアプリで必ず表示される正常な警告</strong>です。以下の手順で続行してください。</p>
+        <ol>
+            <li>警告画面の<strong>左下の「詳細」</strong>リンクをクリック
+                <br><small>※ 右下の青い「安全なページに戻る」ボタンは押さないでください</small>
+            </li>
+            <li>展開されたテキスト内の<strong>「twitchTransFreeNeo に移動（安全ではないページ）」</strong>リンクをクリック</li>
+            <li>通常の Google ログイン画面に進むので、認証を完了させる</li>
+        </ol>
+        <p>この警告は、あなた自身が作成したアプリ（Google審査を受けていない）のため表示されるものです。自分専用のアプリなので、安全に続行できます。</p>
+    </div>
+
     <h2>よくある質問（FAQ）</h2>
 
     <div class="faq">
-        <p class="faq-q">Q: 「このアプリは確認されていません」と表示されます</p>
-        <p class="faq-a">A: 自分で作成したアプリなので正常です。「詳細」→「（アプリ名）に移動（安全ではないページ）」をクリックして続行してください。</p>
+        <p class="faq-q">Q: 「このアプリは Google で確認されていません」と表示されます</p>
+        <p class="faq-a">A: <strong>これは正常な警告画面です。エラーではありません。</strong>以下の手順で続行してください：
+            <ol>
+                <li>画面<strong>左下</strong>の「<strong>詳細</strong>」リンクをクリック（右下の「安全なページに戻る」ボタンを押さない）</li>
+                <li>展開されたテキスト内の「<strong>twitchTransFreeNeo に移動（安全ではないページ）</strong>」リンクをクリック</li>
+                <li>Google ログイン画面に進むので認証を完了</li>
+            </ol>
+            自作OAuthアプリは Google の審査を受けていないため、この警告が必ず表示されます。自分で作成したアプリなので安全に続行できます。
+        </p>
     </div>
 
     <div class="faq">
         <p class="faq-q">Q: 「アクセスをブロック」「403: access_denied」と表示されます</p>
         <p class="faq-a">A: <strong>最もよくある原因は、テストユーザーに自分を追加していないことです。</strong>
             <ol>
-                <li><a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank">OAuth同意画面</a>を開く</li>
-                <li>「テストユーザー」セクションで「+ ADD USERS」をクリック</li>
-                <li>自分のGmailアドレスを追加して保存</li>
-                <li>twitchTransFreeNeoに戻り、再度「YouTube認証を行う」をクリック</li>
+                <li><a href="https://console.cloud.google.com/auth/audience" target="_blank">Google Auth Platform の「対象（Audience）」タブ</a>を開く</li>
+                <li>「テストユーザー（Test users）」セクションで「<strong>+ Add users</strong>」をクリック</li>
+                <li>自分の Gmail アドレスを追加して保存</li>
+                <li>twitchTransFreeNeo に戻り、再度「YouTube認証を行う」をクリック</li>
             </ol>
+            ※ 旧UIの場合は <a href="https://console.cloud.google.com/apis/credentials/consent" target="_blank">OAuth同意画面</a> の「テストユーザー」セクションです。
         </p>
     </div>
 
@@ -396,7 +425,9 @@
 
     <h2>関連リンク</h2>
     <div class="button-container">
-        <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="button button-secondary">Google Cloud Console</a>
+        <a href="https://console.cloud.google.com/auth/overview" target="_blank" class="button button-secondary">Google Auth Platform</a>
+        <a href="https://console.cloud.google.com/auth/clients" target="_blank" class="button button-secondary">クライアント</a>
+        <a href="https://console.cloud.google.com/auth/audience" target="_blank" class="button button-secondary">対象（テストユーザー）</a>
         <a href="https://developers.google.com/youtube/v3/getting-started" target="_blank" class="button button-secondary">YouTube API 公式ドキュメント</a>
         <a href="https://github.com/sayonari/twitchTransFreeNeo" target="_blank" class="button button-secondary">GitHub リポジトリ</a>
     </div>
