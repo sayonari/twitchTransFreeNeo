@@ -46,9 +46,11 @@ except ImportError:
 class YouTubeChatMonitor:
     """YouTube Liveチャット監視クラス（読み取り＋書き込み対応）"""
 
-    def __init__(self, config: Dict[str, Any], message_callback: Callable[[ChatMessage], None]):
+    def __init__(self, config: Dict[str, Any], message_callback: Callable[[ChatMessage], None],
+                 log_callback: Optional[Callable[[str], None]] = None):
         self.config = config
         self.message_callback = message_callback
+        self.log_callback = log_callback
         self.processor = MessageProcessor(config)
         self.translator = TranslationEngine(config)
         self.language_detector = LanguageDetector(config)
@@ -136,20 +138,29 @@ class YouTubeChatMonitor:
             traceback.print_exc()
             return False
 
+    def _log(self, message: str):
+        """コンソールとGUIログの両方に出力"""
+        print(message)
+        if self.log_callback:
+            try:
+                self.log_callback(message)
+            except Exception:
+                pass
+
     def _init_posting(self):
         """投稿機能を初期化"""
         if self.view_only_mode:
-            print("[INFO] 表示のみモード: 投稿機能は無効です")
+            self._log("[INFO] 表示のみモード設定が有効: 投稿機能は無効です")
             self.can_post = False
             return
 
         if not self.auth_manager:
-            print("[INFO] 認証なし: 投稿機能は無効です")
+            self._log("[INFO] 認証マネージャーなし: 投稿機能は無効です")
             self.can_post = False
             return
 
         if not self.auth_manager.is_authenticated():
-            print("[INFO] 未認証: 投稿機能は無効です")
+            self._log("[INFO] 未認証: 投稿機能は無効です（YouTube認証を行ってください）")
             self.can_post = False
             return
 
@@ -158,9 +169,11 @@ class YouTubeChatMonitor:
         if live_chat_id:
             self.live_chat_id = live_chat_id
             self.can_post = True
-            print(f"[INFO] ライブチャットID取得成功: {live_chat_id[:20]}...")
+            self._log(f"[INFO] ライブチャットID取得成功: 投稿機能が有効になりました")
         else:
-            print(f"[WARNING] ライブチャットID取得失敗: {error}")
+            self._log(f"[WARNING] 投稿機能が無効（読み取り専用）: {error}")
+            self._log("[HINT] 原因として考えられるもの: (1) YouTube Data API v3 が有効化されていない / "
+                     "(2) 動画がライブ配信中でない / (3) APIクォータ超過 / (4) 動画IDが誤っている")
             self.can_post = False
 
     def _monitor_loop(self):
@@ -320,15 +333,15 @@ class YouTubeChatMonitor:
                 self.last_post_time = current_time
                 self.daily_post_count += 1
                 if self.config.get("debug", False):
-                    print(f"[DEBUG] YouTube投稿成功 ({self.daily_post_count}/{self.daily_quota_limit})")
+                    self._log(f"[DEBUG] YouTube投稿成功 ({self.daily_post_count}/{self.daily_quota_limit})")
             else:
-                print(f"[WARNING] YouTube投稿失敗: {error}")
+                self._log(f"[WARNING] YouTube投稿失敗: {error}")
                 # クォータ超過エラーの場合は制限フラグを立てる
                 if "quotaExceeded" in str(error):
                     self._rate_limit_warned = True
 
         except Exception as e:
-            print(f"[ERROR] YouTube投稿エラー: {e}")
+            self._log(f"[ERROR] YouTube投稿エラー: {e}")
 
     def _clean_message(self, message: str) -> str:
         """メッセージをクリーニング"""
@@ -369,13 +382,13 @@ class YouTubeChatMonitor:
         if self.config.get("tts_in", False):
             tts_text = self._format_tts_text(chat_message, is_input=True)
             if tts_text:
-                self.tts_engine.add_message(tts_text, chat_message.lang)
+                self.tts_engine.put(tts_text, chat_message.lang)
 
         # 出力テキスト読み上げ
         if self.config.get("tts_out", False):
             tts_text = self._format_tts_text(chat_message, is_input=False)
             if tts_text:
-                self.tts_engine.add_message(tts_text, chat_message.target_lang)
+                self.tts_engine.put(tts_text, chat_message.target_lang)
 
     def _format_tts_text(self, chat_message: ChatMessage, is_input: bool = True) -> str:
         """TTS用のテキストをフォーマット"""

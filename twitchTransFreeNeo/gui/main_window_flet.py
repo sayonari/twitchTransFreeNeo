@@ -804,7 +804,9 @@ class MainWindow:
                         )
                         return
                 else:
-                    self.youtube_monitor = YouTubeChatMonitor(config, self._on_message_received)
+                    self.youtube_monitor = YouTubeChatMonitor(
+                        config, self._on_message_received, log_callback=self._log_message
+                    )
                     if self.youtube_monitor.start():
                         video_id = config.get("youtube_video_id", "")
                         mode = "投稿可能" if self.youtube_monitor.can_post else "読み取り専用"
