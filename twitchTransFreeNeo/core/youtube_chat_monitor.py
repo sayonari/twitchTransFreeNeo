@@ -68,6 +68,7 @@ class YouTubeChatMonitor:
         self.auth_manager: Optional[YouTubeAuthManager] = None
         self.live_chat_id: Optional[str] = None
         self.can_post = False  # 投稿可能かどうか
+        self.self_channel_id: Optional[str] = None  # 自己投稿判定用
 
         # 表示のみモードかチェック
         self.view_only_mode = config.get("view_only_mode", False)
@@ -170,6 +171,12 @@ class YouTubeChatMonitor:
             self.live_chat_id = live_chat_id
             self.can_post = True
             self._log(f"[INFO] ライブチャットID取得成功: 投稿機能が有効になりました")
+            # 自己投稿判定用に認証アカウントのチャンネルIDを取得
+            self.self_channel_id = self.auth_manager.get_my_channel_id()
+            if self.self_channel_id:
+                self._log(f"[INFO] 自己投稿フィルタ有効化: channelId={self.self_channel_id[:12]}...")
+            else:
+                self._log("[WARNING] 自チャンネルID取得失敗: 翻訳結果のエコーが発生する可能性があります")
         else:
             self._log(f"[WARNING] 投稿機能が無効（読み取り専用）: {error}")
             self._log("[HINT] 原因として考えられるもの: (1) YouTube Data API v3 が有効化されていない / "
@@ -203,6 +210,12 @@ class YouTubeChatMonitor:
         """メッセージ処理"""
         if not self.is_running:
             return
+
+        # 自己投稿（翻訳結果のエコー）をスキップ
+        if self.self_channel_id:
+            author_channel_id = getattr(chat_item.author, 'channelId', None)
+            if author_channel_id and author_channel_id == self.self_channel_id:
+                return
 
         username = chat_item.author.name
         original_content = chat_item.message

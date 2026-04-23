@@ -234,6 +234,20 @@ class YouTubeAuthManager:
                 self._init_youtube_service()
         return self.youtube_service
 
+    def get_my_channel_id(self) -> Optional[str]:
+        """認証済みアカウントのYouTubeチャンネルIDを取得（自己投稿判定用）"""
+        service = self.get_youtube_service()
+        if not service:
+            return None
+        try:
+            response = service.channels().list(part='id', mine=True).execute()
+            items = response.get('items', [])
+            if items:
+                return items[0].get('id')
+        except Exception as e:
+            print(f"[WARNING] 自チャンネルID取得エラー: {e}")
+        return None
+
     def get_live_chat_id(self, video_id: str) -> Tuple[Optional[str], str]:
         """
         動画IDからライブチャットIDを取得
