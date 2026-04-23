@@ -280,7 +280,7 @@ class YouTubeAuthManager:
         except Exception as e:
             return None, f"ライブチャットID取得エラー: {e}"
 
-    def send_message(self, live_chat_id: str, message: str) -> Tuple[bool, str]:
+    def send_message(self, live_chat_id: str, message: str) -> Tuple[bool, str, Optional[str]]:
         """
         ライブチャットにメッセージを送信
 
@@ -289,11 +289,11 @@ class YouTubeAuthManager:
             message: 送信するメッセージ
 
         Returns:
-            (成功したか, エラーメッセージ)
+            (成功したか, エラーメッセージ, 投稿メッセージID)
         """
         service = self.get_youtube_service()
         if not service:
-            return False, "YouTube APIが初期化されていません"
+            return False, "YouTube APIが初期化されていません", None
 
         try:
             body = {
@@ -306,24 +306,25 @@ class YouTubeAuthManager:
                 }
             }
 
-            service.liveChatMessages().insert(
+            response = service.liveChatMessages().insert(
                 part='snippet',
                 body=body
             ).execute()
 
-            return True, ""
+            message_id = response.get('id') if isinstance(response, dict) else None
+            return True, "", message_id
 
         except Exception as e:
             error_msg = str(e)
             # よくあるエラーの日本語化
             if 'quotaExceeded' in error_msg:
-                return False, "YouTube APIのクォータを超過しました。しばらく待ってから再試行してください。"
+                return False, "YouTube APIのクォータを超過しました。しばらく待ってから再試行してください。", None
             elif 'forbidden' in error_msg.lower():
-                return False, "このチャットへの投稿権限がありません。"
+                return False, "このチャットへの投稿権限がありません。", None
             elif 'liveChatEnded' in error_msg:
-                return False, "ライブチャットは終了しています。"
+                return False, "ライブチャットは終了しています。", None
             else:
-                return False, f"メッセージ送信エラー: {e}"
+                return False, f"メッセージ送信エラー: {e}", None
 
     def revoke_credentials(self) -> bool:
         """認証情報を取り消し"""

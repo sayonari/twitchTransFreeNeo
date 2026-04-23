@@ -68,7 +68,10 @@ class YouTubeChatMonitor:
         self.auth_manager: Optional[YouTubeAuthManager] = None
         self.live_chat_id: Optional[str] = None
         self.can_post = False  # 投稿可能かどうか
-        self.self_channel_id: Optional[str] = None  # 自己投稿判定用
+        # ツール自身が投稿したメッセージを識別するためのキャッシュ
+        # （認証アカウント=配信者でも、ユーザー自身の手書き投稿は翻訳対象に含める）
+        self.posted_message_ids: deque = deque(maxlen=200)  # 投稿したメッセージID
+        self.recent_posted_texts: deque = deque(maxlen=50)  # 直近の投稿本文 (text, timestamp)
 
         # 表示のみモードかチェック
         self.view_only_mode = config.get("view_only_mode", False)
@@ -171,12 +174,6 @@ class YouTubeChatMonitor:
             self.live_chat_id = live_chat_id
             self.can_post = True
             self._log(f"[INFO] ライブチャットID取得成功: 投稿機能が有効になりました")
-            # 自己投稿判定用に認証アカウントのチャンネルIDを取得
-            self.self_channel_id = self.auth_manager.get_my_channel_id()
-            if self.self_channel_id:
-                self._log(f"[INFO] 自己投稿フィルタ有効化: channelId={self.self_channel_id[:12]}...")
-            else:
-                self._log("[WARNING] 自チャンネルID取得失敗: 翻訳結果のエコーが発生する可能性があります")
         else:
             self._log(f"[WARNING] 投稿機能が無効（読み取り専用）: {error}")
             self._log("[HINT] 原因として考えられるもの: (1) YouTube Data API v3 が有効化されていない / "
@@ -211,10 +208,17 @@ class YouTubeChatMonitor:
         if not self.is_running:
             return
 
-        # 自己投稿（翻訳結果のエコー）をスキップ
-        if self.self_channel_id:
-            author_channel_id = getattr(chat_item.author, 'channelId', None)
-            if author_channel_id and author_channel_id == self.self_channel_id:
+        # ツール自身が投稿した翻訳結果のエコーをスキップ
+        # 判定方法: (1) 投稿時のメッセージIDと一致 / (2) 直近の投稿本文と完全一致（30秒以内）
+        message_id = getattr(chat_item, 'id', None)
+        if message_id and message_id in self.posted_message_ids:
+            return
+        content = chat_item.message or ""
+        now = time.time()
+        for posted_text, posted_at in list(self.recent_posted_texts):
+            if now - posted_at > 30:
+                continue
+            if content == posted_text:
                 return
 
         username = chat_item.author.name
@@ -340,11 +344,15 @@ class YouTubeChatMonitor:
                 message_text = message_text[:max_length - 3] + "..."
 
             # YouTube チャットに投稿
-            success, error = self.auth_manager.send_message(self.live_chat_id, message_text)
+            success, error, posted_id = self.auth_manager.send_message(self.live_chat_id, message_text)
 
             if success:
                 self.last_post_time = current_time
                 self.daily_post_count += 1
+                # エコー防止：投稿したIDと本文をキャッシュ
+                if posted_id:
+                    self.posted_message_ids.append(posted_id)
+                self.recent_posted_texts.append((message_text, current_time))
                 if self.config.get("debug", False):
                     self._log(f"[DEBUG] YouTube投稿成功 ({self.daily_post_count}/{self.daily_quota_limit})")
             else:
