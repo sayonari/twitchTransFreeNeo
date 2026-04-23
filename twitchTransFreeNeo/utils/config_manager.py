@@ -98,6 +98,7 @@ class ConfigManager:
             "trans_text_color": "GoldenRod",
             "lang_trans_to_home": "ja",
             "lang_home_to_other": "en",
+            "trans_to_home_only": False,  # True: 外国語→母語の一方向のみ翻訳（ボット向け）
             "show_by_name": True,
             "show_by_lang": True,
             

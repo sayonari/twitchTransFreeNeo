@@ -271,8 +271,8 @@ class YouTubeChatMonitor:
             target_lang = self.language_detector.determine_target_language(detected_lang, cleaned_content)
             final_text = cleaned_content
 
-        # 同じ言語なら翻訳不要
-        if detected_lang == target_lang:
+        # 同じ言語なら翻訳不要（pt と pt-BR などの地域バリアントも同一扱い）
+        if LanguageDetector.langs_match(detected_lang, target_lang):
             return
 
         # データベースから既訳語チェック

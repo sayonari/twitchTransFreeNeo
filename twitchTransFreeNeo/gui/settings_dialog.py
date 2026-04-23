@@ -649,6 +649,17 @@ class SettingsDialog:
             visible=(other_lang_value == "custom"),
         )
 
+        # 一方向翻訳モード（ボットアカウント向け）
+        self.trans_to_home_only_checkbox = ft.Checkbox(
+            label="外国語 → 母語の一方向のみ翻訳する（ボットアカウント向け）",
+            value=self.config.get("trans_to_home_only", False),
+            tooltip=(
+                "有効にすると、母語（ホーム言語）で書かれた投稿は翻訳・再投稿しません。\n"
+                "外国語 → 母語への翻訳のみ行います。\n"
+                "配信主とは別のボット専用アカウントでツールを動かす場合に推奨。"
+            ),
+        )
+
         lang_card = self._create_settings_card(
             "言語設定",
             ft.Icons.LANGUAGE,
@@ -659,6 +670,7 @@ class SettingsDialog:
                     "ホーム言語のコメント → 外国語に翻訳\n外国語のコメント → ホーム言語に翻訳\n※「その他」を選ぶとGoogle翻訳の任意の言語コードを入力できます",
                     size=11, color=ft.Colors.GREY_600,
                 ),
+                self.trans_to_home_only_checkbox,
             ], spacing=8),
             helper_text="60以上の言語に対応。リストにない言語も直接入力可能"
         )
@@ -1147,6 +1159,8 @@ class SettingsDialog:
         else:
             updated["lang_home_to_other"] = self.other_lang_dropdown.value
 
+        updated["trans_to_home_only"] = bool(self.trans_to_home_only_checkbox.value)
+
         updated["translator"] = self.translator_dropdown.value
         updated["google_translate_suffix"] = self.google_suffix_dropdown.value
         updated["deepl_api_key"] = self.deepl_key_field.value
@@ -1526,6 +1540,9 @@ class SettingsDialog:
                 self.other_lang_dropdown.value = "custom"
                 self.other_lang_custom_field.value = lang
                 self.other_lang_custom_container.visible = True
+
+        if "trans_to_home_only" in imported_config and hasattr(self, "trans_to_home_only_checkbox"):
+            self.trans_to_home_only_checkbox.value = bool(imported_config.get("trans_to_home_only", False))
 
         # 表示設定
         if "trans_text_color" in imported_config and self.color_dropdown:

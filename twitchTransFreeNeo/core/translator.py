@@ -243,39 +243,68 @@ class TranslationEngine:
 
 class LanguageDetector:
     """言語検出とフィルタリング"""
-    
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.ignore_langs = config.get("ignore_lang", [])
         self.target_langs = [
-            "af", "sq", "am", "ar", "hy", "az", "eu", "be", "bn", "bs", "bg", "ca", 
-            "ceb", "ny", "zh-CN", "zh-TW", "co", "hr", "cs", "da", "nl", "en", "eo", 
-            "et", "tl", "fi", "fr", "fy", "gl", "ka", "de", "el", "gu", "ht", "ha", 
-            "haw", "iw", "hi", "hmn", "hu", "is", "ig", "id", "ga", "it", "ja", "jw", 
-            "kn", "kk", "km", "ko", "ku", "ky", "lo", "la", "lv", "lt", "lb", "mk", 
-            "mg", "ms", "ml", "mt", "mi", "mr", "mn", "my", "ne", "no", "ps", "fa", 
-            "pl", "pt", "ma", "ro", "ru", "sm", "gd", "sr", "st", "sn", "sd", "si", 
-            "sk", "sl", "so", "es", "su", "sw", "sv", "tg", "ta", "te", "th", "tr", 
+            "af", "sq", "am", "ar", "hy", "az", "eu", "be", "bn", "bs", "bg", "ca",
+            "ceb", "ny", "zh-CN", "zh-TW", "co", "hr", "cs", "da", "nl", "en", "eo",
+            "et", "tl", "fi", "fr", "fy", "gl", "ka", "de", "el", "gu", "ht", "ha",
+            "haw", "iw", "hi", "hmn", "hu", "is", "ig", "id", "ga", "it", "ja", "jw",
+            "kn", "kk", "km", "ko", "ku", "ky", "lo", "la", "lv", "lt", "lb", "mk",
+            "mg", "ms", "ml", "mt", "mi", "mr", "mn", "my", "ne", "no", "ps", "fa",
+            "pl", "pt", "ma", "ro", "ru", "sm", "gd", "sr", "st", "sn", "sd", "si",
+            "sk", "sl", "so", "es", "su", "sw", "sv", "tg", "ta", "te", "th", "tr",
             "uk", "ur", "uz", "vi", "cy", "xh", "yi", "yo", "zu"
         ]
-    
+
+    @staticmethod
+    def langs_match(a: str, b: str) -> bool:
+        """言語コードの同一性判定（地域バリアントを同一視）
+
+        - "pt" と "pt-BR" / "pt-PT" は同一扱い
+        - "zh-CN" と "zh-TW" は簡体字/繁体字で翻訳が異なるため区別を維持
+        """
+        if not a or not b:
+            return False
+        if a == b:
+            return True
+        a_base = a.split("-")[0].lower()
+        b_base = b.split("-")[0].lower()
+        if a_base == "zh" or b_base == "zh":
+            return False
+        return a_base == b_base
+
     def should_ignore_language(self, lang: str) -> bool:
         """言語を無視すべきかチェック"""
-        return lang in self.ignore_langs
-    
+        if not lang:
+            return False
+        if lang in self.ignore_langs:
+            return True
+        # 地域バリアントを考慮（例: ignore_lang=["pt"] なら "pt-BR" も無視）
+        return any(self.langs_match(lang, ig) for ig in self.ignore_langs)
+
     def determine_target_language(self, detected_lang: str, input_text: str) -> str:
         """翻訳先言語を決定"""
         home_lang = self.config.get("lang_trans_to_home", "ja")
         other_lang = self.config.get("lang_home_to_other", "en")
-        
+
         # 入力テキストで言語指定があるかチェック
         if ":" in input_text:
             parts = input_text.split(":", 1)
             if len(parts) >= 2 and parts[0] in self.target_langs:
                 return parts[0]
-        
-        # 自動判定
-        if detected_lang == home_lang:
+
+        # 一方向翻訳モード: 外国語 → 母語のみ
+        # 母語の投稿は翻訳対象外にする（呼び出し側の「同言語ガード」でスキップされる）
+        if self.config.get("trans_to_home_only", False):
+            if self.langs_match(detected_lang, home_lang):
+                return home_lang
+            return home_lang
+
+        # 自動判定（双方向）
+        if self.langs_match(detected_lang, home_lang):
             return other_lang
         else:
             return home_lang
