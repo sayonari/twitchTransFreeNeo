@@ -721,6 +721,16 @@ class MainWindow:
             ], spacing=2),
             visible=False,
         )
+        # YouTube投稿クォータ残量表示
+        self.youtube_quota_text = ft.Text("", size=10, color=ft.Colors.GREY_500)
+        self.youtube_quota_container = ft.Container(
+            content=ft.Row([
+                ft.Icon(ft.Icons.SPEED, size=14, color=ft.Colors.GREY_500),
+                self.youtube_quota_text,
+            ], spacing=2),
+            visible=False,
+            tooltip="YouTube投稿数 / 1日の上限（クォータは日本時間17:00にリセット）",
+        )
 
         return ft.Container(
             content=ft.Row([
@@ -729,6 +739,7 @@ class MainWindow:
                 ft.Container(width=20),
                 self.twitch_status_icon,
                 self.youtube_status_icon,
+                self.youtube_quota_container,
                 ft.Container(expand=True),
                 ft.Text("Ctrl+R: 接続 | Ctrl+,: 設定 | Ctrl+E: 出力 | F1: ヘルプ", size=10, color=ft.Colors.GREY_500),
             ], spacing=5),
@@ -805,7 +816,9 @@ class MainWindow:
                         return
                 else:
                     self.youtube_monitor = YouTubeChatMonitor(
-                        config, self._on_message_received, log_callback=self._log_message
+                        config, self._on_message_received,
+                        log_callback=self._log_message,
+                        quota_callback=self._on_youtube_quota_update,
                     )
                     if self.youtube_monitor.start():
                         video_id = config.get("youtube_video_id", "")
@@ -932,6 +945,8 @@ class MainWindow:
                 self.twitch_status_icon.visible = False
             if self.youtube_status_icon:
                 self.youtube_status_icon.visible = False
+            if self.youtube_quota_container:
+                self.youtube_quota_container.visible = False
 
             # メッセージレートをリセット
             self.message_timestamps.clear()
@@ -1374,6 +1389,38 @@ class MainWindow:
         log_entry = f"[{timestamp}] {message}\n"
         self.log_text.value += log_entry
         self.page.update()
+
+    def _on_youtube_quota_update(self, used: int, limit: int):
+        """YouTube投稿クォータ残量の表示更新"""
+        if not self.youtube_quota_container or not self.youtube_quota_text:
+            return
+        remaining = max(limit - used, 0)
+        self.youtube_quota_text.value = f"投稿 {used}/{limit} (残 {remaining})"
+        if limit > 0:
+            ratio = used / limit
+        else:
+            ratio = 1.0
+        # 残量に応じて色を変える
+        if ratio >= 0.95:
+            color = ft.Colors.RED_400
+        elif ratio >= 0.8:
+            color = ft.Colors.ORANGE_400
+        elif ratio >= 0.5:
+            color = ft.Colors.AMBER_700
+        else:
+            color = ft.Colors.GREEN_700
+        self.youtube_quota_text.color = color
+        # アイコン部分も同色に
+        row = self.youtube_quota_container.content
+        if isinstance(row, ft.Row) and row.controls:
+            icon = row.controls[0]
+            if isinstance(icon, ft.Icon):
+                icon.color = color
+        self.youtube_quota_container.visible = True
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     def _open_settings(self, e):
         """設定画面を開く"""

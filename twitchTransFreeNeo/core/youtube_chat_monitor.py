@@ -47,10 +47,12 @@ class YouTubeChatMonitor:
     """YouTube Liveチャット監視クラス（読み取り＋書き込み対応）"""
 
     def __init__(self, config: Dict[str, Any], message_callback: Callable[[ChatMessage], None],
-                 log_callback: Optional[Callable[[str], None]] = None):
+                 log_callback: Optional[Callable[[str], None]] = None,
+                 quota_callback: Optional[Callable[[int, int], None]] = None):
         self.config = config
         self.message_callback = message_callback
         self.log_callback = log_callback
+        self.quota_callback = quota_callback  # (used, limit) で呼ばれる
         self.processor = MessageProcessor(config)
         self.translator = TranslationEngine(config)
         self.language_detector = LanguageDetector(config)
@@ -151,6 +153,14 @@ class YouTubeChatMonitor:
             except Exception:
                 pass
 
+    def _notify_quota(self):
+        """現在の投稿数/上限をGUIに通知"""
+        if self.quota_callback:
+            try:
+                self.quota_callback(self.daily_post_count, self.daily_quota_limit)
+            except Exception:
+                pass
+
     def _init_posting(self):
         """投稿機能を初期化"""
         if self.view_only_mode:
@@ -174,6 +184,7 @@ class YouTubeChatMonitor:
             self.live_chat_id = live_chat_id
             self.can_post = True
             self._log(f"[INFO] ライブチャットID取得成功: 投稿機能が有効になりました")
+            self._notify_quota()
         else:
             self._log(f"[WARNING] 投稿機能が無効（読み取り専用）: {error}")
             self._log("[HINT] 原因として考えられるもの: (1) YouTube Data API v3 が有効化されていない / "
@@ -353,6 +364,7 @@ class YouTubeChatMonitor:
                 if posted_id:
                     self.posted_message_ids.append(posted_id)
                 self.recent_posted_texts.append((message_text, current_time))
+                self._notify_quota()
                 if self.config.get("debug", False):
                     self._log(f"[DEBUG] YouTube投稿成功 ({self.daily_post_count}/{self.daily_quota_limit})")
             else:
