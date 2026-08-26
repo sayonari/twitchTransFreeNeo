@@ -163,7 +163,9 @@
 
 Google翻訳側が一時的にエラーを返すようになり、そのエラー文がそのまま翻訳結果として表示され、さらにアプリ内に記憶されてしまう不具合でした。27版で直らなかったのはこの「記憶」が残っていたためです。
 
-修正版 v0.2.28_Beta を公開しましたので、お試しいただけると助かります🙏</div>
+修正版 v0.2.28_Beta を公開しましたので、お試しいただけると助かります🙏
+
+https://github.com/sayonari/twitchTransFreeNeo/releases/tag/v0.2.28_Beta</div>
 <div class="count">約170文字 ／ 長ければ2つ目の段落を「そのエラー文をアプリが記憶してしまう不具合でした」に短縮できます</div>
 
 <h3>Meruruさん（リプライ）宛</h3>
@@ -181,18 +183,23 @@ v0.2.28_Beta をお試しください🙇</div>
 
 <div class="card">
 <h2>現在の状態と次にやること</h2>
-<div class="box">
-<strong>タグ発行は行っていません。</strong> コミットはローカルに3本積んだ状態です（push もしていません）。タグ発行＝GitHub Actions のビルドと公開が走る不可逆な操作のため、ご確認をお待ちしています。
+<div class="box ok">
+<strong>v0.2.28_Beta をリリースしました。</strong> push＋タグ発行を行い、GitHub Actions で3OSぶんのビルドが成功、Pre-release として公開されています。<br>
+<a href="https://github.com/sayonari/twitchTransFreeNeo/releases/tag/v0.2.28_Beta">https://github.com/sayonari/twitchTransFreeNeo/releases/tag/v0.2.28_Beta</a>
 </div>
-<pre>257a982  fix: テーマとウィンドウサイズが保存されない問題を修正
-1f2812b  fix: 翻訳・読み上げ・接続まわりの不具合を修正 (v0.2.28_Beta)
-b8b7376  docs: OAuthガイドのリンク修正とプロジェクトメモリの更新</pre>
+<table>
+<tr><th style="width:180px">ビルド</th><th>結果</th></tr>
+<tr><td>macOS (arm64)</td><td>✓ 成功 1m34s ／ <code>twitchTransFreeNeo_macos_arm64_0.2.28_Beta.zip</code></td></tr>
+<tr><td>Windows</td><td>✓ 成功 2m01s ／ <code>twitchTransFreeNeo_windows_0.2.28_Beta.zip</code></td></tr>
+<tr><td>Linux</td><td>✓ 成功 1m08s ／ <code>twitchTransFreeNeo_linux_0.2.28_Beta.tar.gz</code></td></tr>
+</table>
+<p class="muted">Pre-release 指定・latest にはしない設定で公開されています（従来の運用どおり）。</p>
 
-<h3>ご確認いただきたいこと</h3>
+<h3>次にやること</h3>
 <ul>
-  <li><strong>実機での動作確認</strong> — <code>uv run python run.py</code> で起動できることは確認済みですが、実際のチャット接続はテストできていません</li>
-  <li><strong>タグ発行の可否</strong> — 良ければ <code>v0.2.28_Beta</code> を push してビルドさせます</li>
-  <li><code>build_nuitka.py</code> がリポジトリ未追跡のまま残っています。Nuitkaは廃止済みのため、削除してよいか判断をお願いします</li>
+  <li><strong>報告者2名への返信</strong> — 上の文案をお使いください（リリースURLを添えると親切です）</li>
+  <li><strong>実機での動作確認</strong> — 起動は確認済みですが、実際のチャット接続はテストできていません</li>
+  <li class="muted">（対応済み）廃止済みの <code>build_nuitka.py</code> を削除しました</li>
 </ul>
 
 <h3>プロジェクトの場所</h3>
