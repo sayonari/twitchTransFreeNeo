@@ -11,7 +11,18 @@ class TranslationDatabase:
 
     MAX_SIZE = 52428800  # 50MB
 
-    def __init__(self, db_path: str = "translations.db"):
+    def __init__(self, db_path: Optional[str] = None):
+        # 設定ファイルと同じディレクトリに置く
+        # （相対パスだとカレントディレクトリ依存になり，.app 起動時などに
+        #   書き込めず翻訳キャッシュが機能しなかった）
+        if db_path is None:
+            try:
+                from ..utils.config_manager import get_application_path
+                db_path = os.path.join(get_application_path(), "translations.db")
+            except Exception as e:
+                print(f"データベースパス解決エラー: {e}")
+                db_path = "translations.db"
+
         self.db_path = db_path
         self._init_database()
 
@@ -38,13 +49,52 @@ class TranslationDatabase:
             ''')
 
             conn.commit()
+            self._purge_error_pages(conn)
+            conn.commit()
             conn.close()
         except Exception as e:
             print(f"データベース初期化エラー: {e}")
 
+    def _purge_error_pages(self, conn):
+        """翻訳サービスのエラーページ文面がキャッシュされた行を削除する
+
+        残っていると Google が復旧しても同じ発言に対して
+        エラー文が恒久的に再生されてしまうため，起動時に掃除する。
+        候補を LIKE で粗く絞ってから厳密判定にかけることで，
+        「それはエラーです」のような正当な翻訳を巻き込まないようにする
+        """
+        try:
+            from .translator import TranslationEngine
+
+            cursor = conn.cursor()
+            cursor.execute(
+                """SELECT id, translation FROM translations
+                   WHERE translation LIKE '%Server Error%'
+                      OR translation LIKE '%all we know%'"""
+            )
+            bad_ids = [
+                row[0] for row in cursor.fetchall()
+                if TranslationEngine.is_error_page(row[1])
+            ]
+
+            if bad_ids:
+                cursor.executemany(
+                    "DELETE FROM translations WHERE id = ?",
+                    [(i,) for i in bad_ids]
+                )
+                print(f"翻訳キャッシュ浄化: エラーページ文面 {len(bad_ids)} 件を削除")
+        except Exception as e:
+            print(f"翻訳キャッシュ浄化エラー: {e}")
+
     async def save_translation(self, message: str, translation: str, target_lang: str) -> bool:
         """翻訳を保存"""
         try:
+            # 翻訳サービスのエラーページ文面は保存しない
+            # （保存すると同じ発言に対して恒久的に再生されてしまう）
+            from .translator import TranslationEngine
+            if TranslationEngine.is_error_page(translation):
+                return False
+
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
                     '''INSERT OR REPLACE INTO translations
@@ -68,7 +118,15 @@ class TranslationDatabase:
                     (message, target_lang)
                 )
                 row = await cursor.fetchone()
-                return row[0] if row else None
+                if not row:
+                    return None
+
+                # 念のため取り出す側でも検証する
+                # （古いバージョンが保存したエラー文面が残っていても再生しない）
+                from .translator import TranslationEngine
+                if TranslationEngine.is_error_page(row[0]):
+                    return None
+                return row[0]
         except Exception as e:
             print(f"翻訳取得エラー: {e}")
             return None

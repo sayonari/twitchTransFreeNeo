@@ -147,6 +147,12 @@ if TWITCHIO_AVAILABLE:
             self.database = TranslationDatabase()
             self.tts_engine = TTSEngine(config)
             self.is_running = False
+            # 起動メッセージを投稿済みのチャンネル
+            # （再接続などで event_channel_joined が複数回発火し，
+            #   同じ挨拶が二重投稿されるのを防ぐ）
+            self._greeted_channels = set()
+            # 実際に接続が確立したことを GUI へ伝えるためのコールバック
+            self.ready_callback = None
         
             # 表示のみモードの場合はダミートークンを使用
             oauth_token = config.get("trans_oauth", "")
@@ -190,10 +196,23 @@ if TWITCHIO_AVAILABLE:
             self.is_running = True
             # TTSエンジンを開始
             self.tts_engine.start()
+
+            # 接続が確立したことをGUIへ通知
+            if self.ready_callback:
+                try:
+                    self.ready_callback()
+                except Exception as e:
+                    print(f"ready_callback エラー: {e}")
     
         async def event_channel_joined(self, channel):
             """チャンネル参加時"""
             print(f"チャンネル '{channel.name}' に参加しました")
+
+            # 同一チャンネルへの挨拶は1度だけ（二重投稿の防止）
+            if channel.name in self._greeted_channels:
+                return
+            self._greeted_channels.add(channel.name)
+
             # 表示のみモードでない場合のみチャットに投稿
             if not self.config.get("view_only_mode", False):
                 try:
@@ -338,7 +357,13 @@ if TWITCHIO_AVAILABLE:
             # 言語表示
             if self.config.get("show_by_lang", True):
                 output_text = f"{output_text} ({chat_message.lang} > {chat_message.target_lang})"
-            
+
+            # Twitch のメッセージ上限（500文字）を超えると送信が失敗するため切り詰める
+            # "/me " の4文字ぶんを差し引いて計算する
+            limit = 500 - len("/me ")
+            if len(output_text) > limit:
+                output_text = output_text[:limit - 1] + "…"
+
             try:
                 await channel.send(f"/me {output_text}")
             except Exception as e:
@@ -356,15 +381,17 @@ if TWITCHIO_AVAILABLE:
                 print(f"TTS: Processing message from {chat_message.user}")
                 print(f"TTS: tts_in={self.config.get('tts_in', False)}, tts_out={self.config.get('tts_out', False)}")
             
-            # 言語制限チェック
+            # 読み上げ対象言語の判定を入力・出力それぞれで行う
+            # 以前は入力言語だけで一括判定していたため，「日本語だけ読み上げる」設定にすると
+            # 外国語→日本語の翻訳文まで読まれなくなっていた
             read_only_langs = self.config.get("read_only_these_lang", [])
-            if read_only_langs and chat_message.lang not in read_only_langs:
-                if self.config.get("debug", False):
-                    print(f"TTS: Language {chat_message.lang} not in allowed list: {read_only_langs}")
-                return
-            
+
+            def is_readable(lang: str) -> bool:
+                return not read_only_langs or lang in read_only_langs
+
             # 入力TTS（絵文字除去済みのメッセージ）
-            if self.config.get("tts_in", False) and chat_message.cleaned_content:
+            if (self.config.get("tts_in", False) and chat_message.cleaned_content
+                    and is_readable(chat_message.lang)):
                 tts_text = self._build_tts_text(chat_message, chat_message.cleaned_content, chat_message.lang, is_input=True)
                 if tts_text:
                     if self.config.get("debug", False):
@@ -374,7 +401,8 @@ if TWITCHIO_AVAILABLE:
                     print("TTS: No input text generated")
             
             # 出力TTS（翻訳されたメッセージ）
-            if self.config.get("tts_out", False) and chat_message.translation:
+            if (self.config.get("tts_out", False) and chat_message.translation
+                    and is_readable(chat_message.target_lang)):
                 # 翻訳後のテキストからも絵文字を除去
                 cleaned_translated = self._clean_text_for_tts(chat_message.translation)
                 tts_text = self._build_tts_text(chat_message, cleaned_translated, chat_message.target_lang, is_input=False)
@@ -460,11 +488,56 @@ if TWITCHIO_AVAILABLE:
 class ChatMonitor:
     """チャット監視統合クラス"""
     
-    def __init__(self, config: Dict[str, Any], message_callback: Callable[[ChatMessage], None]):
+    def __init__(self, config: Dict[str, Any], message_callback: Callable[[ChatMessage], None],
+                 log_callback: Optional[Callable[[str], None]] = None,
+                 ready_callback: Optional[Callable[[], None]] = None,
+                 disconnected_callback: Optional[Callable[[str], None]] = None):
         self.config = config
         self.message_callback = message_callback
+        # 接続の実際の成否を GUI に伝えるためのコールバック
+        self.log_callback = log_callback
+        self.ready_callback = ready_callback
+        self.disconnected_callback = disconnected_callback
         self.bot: Optional[TwitchChatBot] = None
         self.is_running = False
+
+    def _log(self, message: str):
+        """ログをGUIへ通知（未設定なら標準出力）"""
+        print(message)
+        if self.log_callback:
+            try:
+                self.log_callback(message)
+            except Exception:
+                pass
+
+    def _on_bot_task_done(self, task):
+        """ボットの実行タスク終了時の後始末
+
+        create_task した例外は誰も待たないと握り潰されるため，
+        ここで拾って利用者に見えるログへ出す
+        （OAuthトークン失効時の「つながらないのに理由が出ない」対策）
+        """
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is None:
+            return
+
+        message = str(exc)
+        if "authentication" in message.lower() or "login" in message.lower():
+            reason = "Twitch認証に失敗しました。OAuthトークンを再取得してください。"
+        else:
+            reason = f"Twitch接続が終了しました: {type(exc).__name__}: {message}"
+
+        self._log(f"[ERROR] {reason}")
+        self.is_running = False
+
+        # GUI の接続表示を解除させる（未接続なのに接続中と表示され続けるのを防ぐ）
+        if self.disconnected_callback:
+            try:
+                self.disconnected_callback(reason)
+            except Exception as e:
+                print(f"disconnected_callback エラー: {e}")
     
     async def start(self) -> tuple[bool, str]:
         """監視開始
@@ -486,6 +559,7 @@ class ChatMonitor:
             print(f"表示のみモード: {self.config.get('view_only_mode')}")
 
             self.bot = TwitchChatBot(self.config, self.message_callback)
+            self.bot.ready_callback = self.ready_callback
 
             # 設定検証
             if not self.config.get("twitch_channel"):
@@ -496,7 +570,8 @@ class ChatMonitor:
                 return False, "OAuthトークンが設定されていません。設定画面で入力してください。"
 
             # 非同期でボット起動（v0.2.0_Betaと同じシンプルな方式に戻す）
-            asyncio.create_task(self.bot.start())
+            task = asyncio.create_task(self.bot.start())
+            task.add_done_callback(self._on_bot_task_done)
             self.is_running = True
             return True, ""
 

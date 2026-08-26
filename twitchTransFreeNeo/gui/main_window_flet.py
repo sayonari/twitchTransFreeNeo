@@ -23,6 +23,11 @@ except ImportError:
 class MainWindow:
     """Fletベースのメインウィンドウクラス"""
 
+    # 画面に保持するメッセージ件数（多すぎると描画が重くなる）
+    MAX_VISIBLE_MESSAGES = 100
+    # メモリ上に保持する履歴件数
+    MAX_HISTORY_MESSAGES = 1000
+
     def __init__(self):
         self.config_manager = ConfigManager()
         self.chat_monitor: Optional[ChatMonitor] = None
@@ -788,12 +793,18 @@ class MainWindow:
 
             # Twitch接続（twitch または both の場合）
             if platform in ["twitch", "both"]:
-                self.chat_monitor = ChatMonitor(config, self._on_message_received)
+                self.chat_monitor = ChatMonitor(
+                    config, self._on_message_received,
+                    log_callback=self._log_message,
+                    ready_callback=self._on_twitch_ready,
+                    disconnected_callback=self._on_twitch_disconnected,
+                )
                 success, error_msg = await self.chat_monitor.start()
                 if success:
                     channel = config.get("twitch_channel", "")
+                    # 接続確立は event_ready を待って確定する（ここでは接続要求のみ）
                     status_parts.append(f"Twitch: {channel}")
-                    self._log_message(f"Twitchチャンネル '{channel}' に接続しました")
+                    self._log_message(f"Twitchチャンネル '{channel}' へ接続しています...")
                 else:
                     twitch_success = False
                     self._log_message(f"Twitch接続エラー: {error_msg}")
@@ -876,6 +887,72 @@ class MainWindow:
             elif "timeout" in error_str.lower():
                 hint = "接続がタイムアウトしました。しばらく待ってから再試行してください。"
             await self._show_error_dialog("接続エラー", f"接続中にエラーが発生しました:\n{e}", hint=hint)
+
+    def _on_twitch_disconnected(self, reason: str):
+        """Twitch 接続が失敗・切断されたときの処理
+
+        接続タスクは非同期で走るため，接続要求の直後に成功表示をしている。
+        実際には失敗していた場合，ここで表示を未接続へ戻す
+        """
+        config = self.config_manager.get_all()
+        platform = config.get("platform", "twitch")
+
+        # both 構成で YouTube 側が生きているなら接続状態は維持し，警告だけ出す
+        youtube_alive = platform == "both" and self.youtube_monitor is not None
+        if youtube_alive:
+            self._log_message(f"[WARNING] {reason}（YouTube側は継続中）")
+            if self.twitch_status_icon:
+                self.twitch_status_icon.visible = False
+            try:
+                self.page.update()
+            except Exception:
+                pass
+            return
+
+        if not self.is_connected:
+            return
+
+        self.is_connected = False
+        self.chat_monitor = None
+
+        if self.connect_button:
+            self.connect_button.text = "接続開始"
+            self.connect_button.icon = ft.Icons.PLAY_ARROW
+        if self.status_text:
+            self.status_text.value = "未接続（接続に失敗しました）"
+            self.status_text.color = ft.Colors.RED
+        if self.status_icon:
+            self.status_icon.color = ft.Colors.RED
+
+        # 接続時間タイマー停止
+        self._connection_timer_running = False
+        self.connection_start_time = None
+        if self.connection_time_text:
+            self.connection_time_text.value = "--:--:--"
+
+        if self.twitch_status_icon:
+            self.twitch_status_icon.visible = False
+
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    def _on_twitch_ready(self):
+        """Twitch への接続が実際に確立したときの処理"""
+        config = self.config_manager.get_all()
+        channel = config.get("twitch_channel", "")
+        self._log_message(f"Twitchチャンネル '{channel}' に接続しました")
+
+        # Twitch 単独構成のときだけステータス文言を確定させる
+        # （both のときは YouTube 側の表示を壊さないようログのみ）
+        if config.get("platform", "twitch") == "twitch" and self.status_text and self.is_connected:
+            self.status_text.value = f"接続中: Twitch: {channel}"
+            self.status_text.color = ft.Colors.GREEN
+            try:
+                self.page.update()
+            except Exception:
+                pass
 
     def _validate_config_for_platform(self, platform: str) -> tuple:
         """プラットフォームに応じた設定確認"""
@@ -964,8 +1041,11 @@ class MainWindow:
         self.messages.append(message)
 
         # 最大メッセージ数を超えたら古いものを削除
-        if len(self.messages) > 1000:
-            self.messages.pop(0)
+        # （表示側のリストからも同じものを取り除き，履歴と表示を一致させる）
+        if len(self.messages) > self.MAX_HISTORY_MESSAGES:
+            removed = self.messages.pop(0)
+            if self.filtered_messages and self.filtered_messages[0] is removed:
+                self.filtered_messages.pop(0)
 
         # メッセージレート計測用のタイムスタンプを追加
         now = datetime.now()
@@ -982,46 +1062,55 @@ class MainWindow:
         if message.translation:
             self.sound_manager.play(SoundManager.SOUND_TRANSLATION)
 
-        # フィルタ適用
-        self._apply_filters(None)
+        # 新着1件のみを追加する（毎回100件を作り直すと非常に重いため）
+        if self._matches_filters(message):
+            self.filtered_messages.append(message)
+            if len(self.filtered_messages) > 1000:
+                self.filtered_messages.pop(0)
 
-        # 統計更新
-        self._update_message_stats()
-        self._update_lang_stats()
+            self.chat_list.controls.append(self._create_message_widget(message))
+            while len(self.chat_list.controls) > self.MAX_VISIBLE_MESSAGES:
+                self.chat_list.controls.pop(0)
 
-    def _apply_filters(self, e):
-        """フィルタ適用"""
+        # 統計更新（画面反映は最後にまとめて1回だけ行う）
+        self._update_message_stats(update_page=False)
+        self._update_lang_stats(update_page=False)
+        self.page.update()
+
+    def _matches_filters(self, msg: ChatMessage) -> bool:
+        """メッセージが現在のフィルタ条件に合致するか"""
         search_text = self.search_field.value.lower() if self.search_field.value else ""
         lang_filter = self.lang_filter.value if self.lang_filter.value else "all"
 
-        # フィルタリング
-        self.filtered_messages = []
-        for msg in self.messages:
-            # 言語フィルタ
-            if lang_filter != "all":
-                if lang_filter == "other":
-                    if msg.lang in ["ja", "en", "ko", "zh"]:
-                        continue
-                elif msg.lang != lang_filter:
-                    continue
+        # 言語フィルタ
+        if lang_filter != "all":
+            if lang_filter == "other":
+                if msg.lang in ["ja", "en", "ko", "zh"]:
+                    return False
+            elif msg.lang != lang_filter:
+                return False
 
-            # 検索フィルタ
-            if search_text:
-                if search_text not in msg.user.lower() and \
-                   search_text not in msg.text.lower() and \
-                   (not msg.translation or search_text not in msg.translation.lower()):
-                    continue
+        # 検索フィルタ
+        if search_text:
+            if search_text not in msg.user.lower() and \
+               search_text not in msg.text.lower() and \
+               (not msg.translation or search_text not in msg.translation.lower()):
+                return False
 
-            self.filtered_messages.append(msg)
+        return True
+
+    def _apply_filters(self, e):
+        """フィルタ適用（フィルタ条件を変更したときの再描画）"""
+        self.filtered_messages = [msg for msg in self.messages if self._matches_filters(msg)]
 
         # 表示更新
         self._update_chat_display()
 
     def _update_chat_display(self):
-        """チャット表示更新"""
+        """チャット表示更新（全再描画）"""
         self.chat_list.controls.clear()
 
-        for msg in self.filtered_messages[-100:]:  # 最新100件のみ表示
+        for msg in self.filtered_messages[-self.MAX_VISIBLE_MESSAGES:]:
             self.chat_list.controls.append(self._create_message_widget(msg))
 
         self.page.update()
@@ -1224,7 +1313,7 @@ class MainWindow:
 
         self.page.update()
 
-    def _update_message_stats(self):
+    def _update_message_stats(self, update_page: bool = True):
         """メッセージ統計更新"""
         total = len(self.messages)
         translated = sum(1 for msg in self.messages if msg.translation)
@@ -1237,9 +1326,10 @@ class MainWindow:
         if self.message_rate_text:
             self.message_rate_text.value = f"{message_rate}/分"
 
-        self.page.update()
+        if update_page:
+            self.page.update()
 
-    def _update_lang_stats(self):
+    def _update_lang_stats(self, update_page: bool = True):
         """言語統計を更新"""
         if not self.lang_stats_column:
             return
@@ -1270,7 +1360,8 @@ class MainWindow:
                     ], spacing=5)
                 )
 
-        self.page.update()
+        if update_page:
+            self.page.update()
 
     def _start_connection_timer(self):
         """接続時間タイマーを開始"""

@@ -140,22 +140,34 @@ class DiagnosticsTool:
             return {"status": "ERROR", "message": "不明な翻訳エンジン"}
     
     async def _check_google_translate(self) -> Dict[str, Any]:
-        """Google翻訳接続チェック"""
-        if not AIOHTTP_AVAILABLE:
-            return {"status": "WARNING", "message": "aiohttpが利用できないため、Google翻訳テストをスキップしました"}
-        
+        """Google翻訳チェック（実際に翻訳して結果を検証する）
+
+        以前は translate.google.co.jp にGETして200なら正常としていたが，
+        トップページが生きていても翻訳APIが障害中ということがあり
+        （2026-08 の Error 500 障害），異常を検出できなかった
+        """
         try:
-            suffix = self.config.get("google_translate_suffix", "com")
-            url = f"https://translate.google.{suffix}"
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=5) as response:
-                    if response.status == 200:
-                        return {"status": "OK", "message": "Google翻訳接続: 正常"}
-                    else:
-                        return {"status": "ERROR", "message": f"Google翻訳接続: エラー (Status: {response.status})"}
+            from ..core.translator import TranslationEngine
+
+            engine = TranslationEngine(self.config)
+            result = await engine.translate_text("hello", "ja")
+
+            if not result:
+                return {
+                    "status": "ERROR",
+                    "message": "Google翻訳: 翻訳に失敗しました（サービス側の障害の可能性があります）"
+                }
+
+            if TranslationEngine.is_error_page(result):
+                return {
+                    "status": "ERROR",
+                    "message": "Google翻訳: サービスがエラーを返しています（時間をおいて再試行してください）"
+                }
+
+            return {"status": "OK", "message": f"Google翻訳: 正常（hello → {result}）"}
+
         except Exception as e:
-            return {"status": "ERROR", "message": f"Google翻訳接続: エラー ({str(e)})"}
+            return {"status": "ERROR", "message": f"Google翻訳: エラー ({str(e)})"}
     
     async def _check_deepl(self) -> Dict[str, Any]:
         """DeepL接続チェック"""
@@ -170,11 +182,20 @@ class DiagnosticsTool:
         try:
             url = "https://api-free.deepl.com/v2/usage"
             headers = {"Authorization": f"DeepL-Auth-Key {api_key}"}
-            
+
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers, timeout=5) as response:
                     if response.status == 200:
-                        return {"status": "OK", "message": "DeepL API接続: 正常"}
+                        # 実際に翻訳できるかまで確かめる
+                        try:
+                            from ..core.translator import TranslationEngine
+                            engine = TranslationEngine(self.config)
+                            result = await engine.translate_text("hello", "ja")
+                            if result and not TranslationEngine.is_error_page(result):
+                                return {"status": "OK", "message": f"DeepL API: 正常（hello → {result}）"}
+                            return {"status": "ERROR", "message": "DeepL API: 認証は通りましたが翻訳に失敗しました"}
+                        except Exception as e:
+                            return {"status": "ERROR", "message": f"DeepL API: 翻訳テストに失敗 ({e})"}
                     elif response.status == 403:
                         return {"status": "ERROR", "message": "DeepL API接続: 認証エラー (APIキーを確認してください)"}
                     else:

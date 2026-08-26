@@ -2,19 +2,65 @@
 # -*- coding: utf-8 -*-
 
 import asyncio
+import re
 import aiohttp
-from typing import Optional, Dict, Any
+from collections import OrderedDict
+from typing import Optional, Dict, Any, Tuple
 from deep_translator import GoogleTranslator
 import deepl
 
 class TranslationEngine:
     """翻訳エンジン統合クラス"""
 
+    # 非公式 Google 翻訳 API（いずれも translate.google.com/m より安定）
+    # DICT_URL は「訳文 + 検出言語」を1リクエストで返すため第一候補にする
+    DICT_URL = "https://clients5.google.com/translate_a/t"
+    GTX_URL = "https://translate.googleapis.com/translate_a/single"
+    _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+           "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
+
+    # Google 障害時に返るエラーページの文面（翻訳結果として誤投稿しないため検出する）
+    # 2026-08-24 頃から translate.google.com/m が間欠的に Error 500 を返し，
+    # その HTML の本文がそのまま翻訳結果として通ってしまう問題への対策
+    #
+    # 判定は厳しめにする。"That's an error" だけで弾くと
+    # 「それはエラーです」の英訳のような正当な翻訳まで捨ててしまうため，
+    # (a) "Error 500 (Server Error)" 形式か，
+    # (b) "That's an error" と "That's all we know" の同時出現
+    # のいずれかを満たす場合だけをエラーページとみなす
+    _ERROR_PAGE_RE = re.compile(r"Error \d{3} \(Server Error\)")
+    _ERR_PHRASES = ("That's an error", "That’s an error", "That&#39;s an error")
+    _ALL_WE_KNOW_PHRASES = ("That's all we know", "That’s all we know", "That&#39;s all we know")
+
+    @classmethod
+    def is_error_page(cls, text: str) -> bool:
+        """Google のエラーページ文面かどうかを判定"""
+        if not text:
+            return False
+        if cls._ERROR_PAGE_RE.search(text):
+            return True
+        has_error_phrase = any(p in text for p in cls._ERR_PHRASES)
+        has_all_we_know = any(p in text for p in cls._ALL_WE_KNOW_PHRASES)
+        return has_error_phrase and has_all_we_know
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.google_available = False
         self.deepl_translator = None
+        # 言語検出のリクエストで得た訳文を短期保持し，直後の翻訳要求で再利用する
+        # （検出と翻訳で API を2回叩かないための最適化）
+        self._recent: "OrderedDict[Tuple[str, str], str]" = OrderedDict()
         self._init_translators()
+
+    def _cache_put(self, text: str, target_lang: str, translation: str):
+        """検出時に得た訳文を短期キャッシュへ"""
+        self._recent[(text, target_lang)] = translation
+        while len(self._recent) > 64:
+            self._recent.popitem(last=False)
+
+    def _cache_pop(self, text: str, target_lang: str) -> Optional[str]:
+        """短期キャッシュから取り出す（1回限り）"""
+        return self._recent.pop((text, target_lang), None)
 
     def _init_translators(self):
         """翻訳エンジンを初期化"""
@@ -32,32 +78,99 @@ class TranslationEngine:
             self.deepl_translator = None
     
     async def detect_language(self, text: str) -> Optional[str]:
-        """言語検出 (deep-translatorを使用)"""
-        try:
-            from deep_translator import single_detection
+        """言語検出
 
-            # Google翻訳エンジンが初期化されていない場合は再初期化
-            if not self.google_available:
-                self._init_translators()
+        1. 文字種から確実に判定できるものはローカルで即決（通信不要）
+        2. ラテン文字などはオンライン検出（訳文も同時に得てキャッシュする）
+        3. それも失敗したらヒューリスティクスへフォールバック
 
-            if not self.google_available:
-                print("言語検出エラー: Google翻訳エンジンが初期化できません")
-                return None
-
-            # deep-translatorのsingle_detection機能を使用
-            detected = await asyncio.to_thread(single_detection, text, api_key=None)
-
-            # CJK言語の検証（APIの誤検出を補正）
-            detected = self._validate_cjk_detection(text, detected)
-
+        以前は deep-translator の single_detection(api_key=None) を使っていたが，
+        これは必ず例外を送出するため実質ヒューリスティクスしか動作せず，
+        ラテン文字の言語がすべて英語と誤判定されていた（2026-08 修正）
+        """
+        # 1. 文字種で確定できるもの（日本語・韓国語・中国語・キリル文字など）
+        definite = self._detect_local_definite(text)
+        if definite:
             if self.config.get("debug", False):
-                print(f"言語検出結果: {text[:30]}... → {detected}")
+                print(f"言語検出結果(ローカル): {text[:30]}... → {definite}")
+            return definite
 
-            return detected if detected else None
+        # 2. オンライン検出（母語への翻訳を兼ねる）
+        home_lang = self.config.get("lang_trans_to_home", "ja")
+        try:
+            result = await self._request_dict_chrome(text, home_lang)
+            if result:
+                translation, detected = result
+                if detected:
+                    # 同時に得た訳文を短期キャッシュへ（直後の翻訳要求で再利用）
+                    if translation and not self.is_error_page(translation):
+                        self._cache_put(text, home_lang, translation)
+                    detected = self._validate_cjk_detection(text, detected)
+                    if self.config.get("debug", False):
+                        print(f"言語検出結果: {text[:30]}... → {detected}")
+                    return detected
         except Exception as e:
             print(f"言語検出エラー: {e}")
-            # フォールバック: 簡易的な言語推定
-            return self._fallback_detect_language(text)
+
+        # 2b. clients5 が落ちている場合は gtx でも検出できる
+        # （ここを省くとラテン文字の言語がすべて英語に戻ってしまう）
+        try:
+            detected = await self._detect_with_gtx(text)
+            if detected:
+                detected = self._validate_cjk_detection(text, detected)
+                if self.config.get("debug", False):
+                    print(f"言語検出結果(gtx): {text[:30]}... → {detected}")
+                return detected
+        except Exception as e:
+            print(f"言語検出エラー(gtx): {e}")
+
+        # 3. フォールバック: 簡易的な言語推定
+        return self._fallback_detect_language(text)
+
+    async def _detect_with_gtx(self, text: str) -> Optional[str]:
+        """gtx JSON API から検出言語のみを取得する"""
+        params = {
+            "client": "gtx",
+            "sl": "auto",
+            "tl": "en",
+            "dt": "t",
+            "q": text,
+        }
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(
+                self.GTX_URL, params=params, headers={"User-Agent": self._UA}
+            ) as response:
+                if response.status != 200:
+                    return None
+                data = await response.json(content_type=None)
+
+        # 応答の3番目の要素に検出言語が入る
+        if isinstance(data, list) and len(data) > 2 and isinstance(data[2], str):
+            return data[2]
+        return None
+
+    def _detect_local_definite(self, text: str) -> Optional[str]:
+        """文字種だけで確実に言語を特定できる場合のみ返す（できなければ None）
+
+        ここで返すのは「その文字が使われていれば言語が一意に決まる」ものに限る。
+        キリル文字（ロシア語/ウクライナ語…）やアラビア文字（アラビア語/ペルシャ語…）
+        のように複数言語で共有される文字はオンライン検出へ回す
+        """
+        if not text:
+            return None
+
+        # かな は日本語にしか使われない
+        has_hiragana = any('぀' <= c <= 'ゟ' for c in text)
+        has_katakana = any('゠' <= c <= 'ヿ' for c in text)
+        if has_hiragana or has_katakana:
+            return 'ja'
+
+        # ハングルは韓国語にしか使われない
+        if any('가' <= c <= '힯' or 'ᄀ' <= c <= 'ᇿ' for c in text):
+            return 'ko'
+
+        return None
 
     def _validate_cjk_detection(self, text: str, detected: str) -> str:
         """CJK言語検出の検証・補正"""
@@ -146,7 +259,43 @@ class TranslationEngine:
             return None
     
     async def _translate_with_google(self, text: str, target_lang: str) -> Optional[str]:
-        """Google翻訳 (deep-translatorを使用)"""
+        """Google翻訳（gtx JSON API を第一候補に，deep-translator へフォールバック）
+
+        2026-08-24 頃から deep-translator が使う translate.google.com/m が
+        間欠的に Error 500 を返すため，安定している translate_a/single
+        (client=gtx) を優先し，エラーページ文面は破棄する
+        """
+        if self.config.get("debug", False):
+            print(f"Google翻訳: {text[:30]}... → {target_lang} に翻訳中...")
+
+        # 言語検出時に同じ訳文を取得済みなら再利用（API呼び出しを1回節約）
+        cached = self._cache_pop(text, target_lang)
+        if cached:
+            if self.config.get("debug", False):
+                print(f"Google翻訳結果(検出時に取得済): {cached[:30]}...")
+            return cached
+
+        # 第一候補: clients5 (訳文+検出言語を返す・最も安定)
+        try:
+            result = await self._request_dict_chrome(text, target_lang)
+            if result and result[0] and not self.is_error_page(result[0]):
+                if self.config.get("debug", False):
+                    print(f"Google翻訳結果(clients5): {result[0][:30]}...")
+                return result[0]
+        except Exception as e:
+            print(f"clients5翻訳エラー: {e}")
+
+        # 第二候補: gtx JSON API
+        try:
+            result = await self._translate_with_gtx(text, target_lang)
+            if result and not self.is_error_page(result):
+                if self.config.get("debug", False):
+                    print(f"Google翻訳結果(gtx): {text[:30]}... → {result[:30]}...")
+                return result
+        except Exception as e:
+            print(f"gtx翻訳エラー: {e}")
+
+        # 最終フォールバック: deep-translator（/m スクレイピング）
         try:
             if not self.google_available:
                 self._init_translators()
@@ -155,13 +304,12 @@ class TranslationEngine:
                 print("Google翻訳エラー: 翻訳エンジンが初期化できません")
                 return None
 
-            # デバッグ情報
-            if self.config.get("debug", False):
-                print(f"Google翻訳: {text[:30]}... → {target_lang} に翻訳中...")
-
-            # deep-translatorのGoogleTranslatorを使用
             translator = GoogleTranslator(source='auto', target=target_lang)
             result = await asyncio.to_thread(translator.translate, text)
+
+            if result and self.is_error_page(result):
+                print("Google翻訳エラー: エラーページ応答を検出したため結果を破棄")
+                return None
 
             if self.config.get("debug", False):
                 print(f"Google翻訳結果: {text[:30]}... → {result[:30] if result else 'None'}...")
@@ -174,6 +322,77 @@ class TranslationEngine:
                 import traceback
                 traceback.print_exc()
             return None
+
+    async def _request_dict_chrome(self, text: str, target_lang: str) -> Optional[Tuple[Optional[str], Optional[str]]]:
+        """clients5 translate_a/t を呼び，(訳文, 検出言語) を返す
+
+        応答形式: [["訳文", "検出言語"], ...]（長文は複数要素に分割される）
+        """
+        params = {
+            "client": "dict-chrome-ex",
+            "sl": "auto",
+            "tl": target_lang,
+            "q": text,
+        }
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(
+                self.DICT_URL, params=params, headers={"User-Agent": self._UA}
+            ) as response:
+                if response.status != 200:
+                    print(f"clients5翻訳エラー: HTTP {response.status}")
+                    return None
+                data = await response.json(content_type=None)
+
+        if not data:
+            return None
+
+        # 稀に {"sentences": [...], "src": "en"} 形式で返ることがあるため両対応にする
+        if isinstance(data, dict):
+            sentences = data.get("sentences") or []
+            translation = "".join(
+                s.get("trans", "") for s in sentences if isinstance(s, dict)
+            )
+            return (translation or None, data.get("src"))
+
+        if not isinstance(data, list):
+            return None
+
+        segments, detected = [], None
+        for item in data:
+            if isinstance(item, list) and item:
+                if item[0]:
+                    segments.append(str(item[0]))
+                if detected is None and len(item) > 1 and item[1]:
+                    detected = str(item[1])
+            elif isinstance(item, str):
+                segments.append(item)
+
+        translation = "".join(segments) or None
+        return (translation, detected)
+
+    async def _translate_with_gtx(self, text: str, target_lang: str) -> Optional[str]:
+        """Google翻訳 非公式 JSON API (translate_a/single, client=gtx)"""
+        params = {
+            "client": "gtx",
+            "sl": "auto",
+            "tl": target_lang,
+            "dt": "t",
+            "q": text,
+        }
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(
+                self.GTX_URL, params=params, headers={"User-Agent": self._UA}
+            ) as response:
+                if response.status != 200:
+                    print(f"gtx翻訳エラー: HTTP {response.status}")
+                    return None
+                data = await response.json(content_type=None)
+                if not data or not data[0]:
+                    return None
+                result = "".join(seg[0] for seg in data[0] if seg and seg[0])
+                return result or None
     
     async def _translate_with_deepl(self, text: str, target_lang: str, source_lang: str) -> Optional[str]:
         """DeepL翻訳"""

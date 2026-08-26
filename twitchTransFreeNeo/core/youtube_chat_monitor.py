@@ -405,20 +405,20 @@ class YouTubeChatMonitor:
         if not self.config.get("tts_enabled", False):
             return
 
-        # 読み上げ言語制限チェック
+        # 読み上げ言語制限チェック（入力・出力それぞれで判定する）
         read_only_langs = self.config.get("read_only_these_lang", [])
-        if read_only_langs:
-            if chat_message.lang not in read_only_langs and chat_message.target_lang not in read_only_langs:
-                return
+
+        def is_readable(lang: str) -> bool:
+            return not read_only_langs or lang in read_only_langs
 
         # 入力テキスト読み上げ
-        if self.config.get("tts_in", False):
+        if self.config.get("tts_in", False) and is_readable(chat_message.lang):
             tts_text = self._format_tts_text(chat_message, is_input=True)
             if tts_text:
                 self.tts_engine.put(tts_text, chat_message.lang)
 
         # 出力テキスト読み上げ
-        if self.config.get("tts_out", False):
+        if self.config.get("tts_out", False) and is_readable(chat_message.target_lang):
             tts_text = self._format_tts_text(chat_message, is_input=False)
             if tts_text:
                 self.tts_engine.put(tts_text, chat_message.target_lang)

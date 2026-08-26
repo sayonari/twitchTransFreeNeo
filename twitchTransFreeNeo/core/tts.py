@@ -51,9 +51,19 @@ class TTSEngine:
             tmp_dir = os.path.join(home_dir, ".twitchTransFreeNeo", "tmp")
         else:
             # 開発環境ではプロジェクトディレクトリのtmpを使用
-            tmp_dir = os.path.join(os.getcwd(), "tmp")
+            # （os.getcwd() だと起動場所によって書き込めない場所を指すことがある）
+            try:
+                from ..utils.config_manager import get_application_path
+                tmp_dir = os.path.join(get_application_path(), "tmp")
+            except Exception:
+                tmp_dir = os.path.join(os.getcwd(), "tmp")
 
-        os.makedirs(tmp_dir, exist_ok=True)
+        try:
+            os.makedirs(tmp_dir, exist_ok=True)
+        except OSError:
+            # 書き込めない場合はホーム配下へ退避
+            tmp_dir = os.path.join(os.path.expanduser("~"), ".twitchTransFreeNeo", "tmp")
+            os.makedirs(tmp_dir, exist_ok=True)
         return tmp_dir
 
     def put(self, text: str, lang: str):
@@ -76,7 +86,18 @@ class TTSEngine:
         """TTSスレッドを停止"""
         if self.is_running:
             self.is_running = False
+            # 未読み上げのメッセージを破棄する
+            # （残したままだと次回開始時に古い発言が読み上げられる）
+            self._drain_queue()
             self.synth_queue.put(None)  # 停止シグナル
+
+    def _drain_queue(self):
+        """読み上げ待ちキューを空にする"""
+        while True:
+            try:
+                self.synth_queue.get_nowait()
+            except queue.Empty:
+                break
 
     def shorten_tts_comment(self, comment: str) -> str:
         """TTS向けのコメントをコンフィグに応じて短縮する"""
@@ -125,10 +146,46 @@ class TTSEngine:
         finally:
             self._cleanup_file(tts_file)
 
+    # Google 翻訳と gTTS で異なる言語コードの対応表
+    # （翻訳側のコードをそのまま渡すと gTTS が対応しておらず読み上げに失敗する）
+    _GTTS_LANG_MAP = {
+        'iw': 'he',      # ヘブライ語（翻訳APIは旧コード iw を返す）
+        'jw': 'jv',      # ジャワ語
+        'zh': 'zh-CN',
+        'zh-cn': 'zh-CN',
+        'zh-tw': 'zh-TW',
+        'ma': 'mr',      # マラーティー語
+        'in': 'id',      # インドネシア語（旧コード）
+    }
+
+    def _to_gtts_lang(self, lang: str) -> str:
+        """翻訳側の言語コードを gTTS 用に変換"""
+        if not lang:
+            return 'en'
+        mapped = self._GTTS_LANG_MAP.get(lang.lower())
+        if mapped:
+            return mapped
+        # 地域バリアント（pt-BR など）は gTTS が解釈できる基底コードへ
+        if '-' in lang and lang.lower() not in ('zh-cn', 'zh-tw'):
+            return lang.split('-')[0]
+        return lang
+
     def _synthesize_audio(self, text: str, lang: str) -> Optional[str]:
         """gTTSで音声ファイルを生成"""
-        tts = gTTS(text, lang=lang)
-        tts_file = os.path.join(self.tmp_dir, f'tts_{datetime.now().microsecond}.mp3')
+        gtts_lang = self._to_gtts_lang(lang)
+        try:
+            tts = gTTS(text, lang=gtts_lang)
+        except Exception as e:
+            # 未対応言語などはここで弾かれる。読み上げを諦めて次へ進む
+            print(f"TTS error: 言語 '{lang}' (gTTS: '{gtts_lang}') は読み上げできません: {e}")
+            return None
+
+        # 同じマイクロ秒での衝突を避けるため連番を併用する
+        self._file_seq = getattr(self, '_file_seq', 0) + 1
+        tts_file = os.path.join(
+            self.tmp_dir,
+            f'tts_{datetime.now().strftime("%H%M%S%f")}_{self._file_seq}.mp3'
+        )
         tts.save(tts_file)
 
         if not os.path.exists(tts_file) or os.path.getsize(tts_file) == 0:
@@ -245,8 +302,9 @@ class TTSEngine:
                 if read_only_langs and lang not in read_only_langs:
                     continue
 
-                # テキストを短縮して音声合成実行
-                text = self.shorten_tts_comment(text)
+                # 本文の短縮は呼び出し元（_build_tts_text / _format_tts_text）で
+                # 済んでいるため，ここでは再短縮しない
+                # （以前は二重に適用され，ユーザー名を含めた全体が切られていた）
                 tts_func(text, lang)
 
             except queue.Empty:
