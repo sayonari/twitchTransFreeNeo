@@ -119,8 +119,14 @@ class MainWindow:
         self.page.window.min_width = 1000
         self.page.window.min_height = 600
 
-        # テーマ設定
-        self.page.theme_mode = ft.ThemeMode.SYSTEM
+        # テーマ設定（前回選んだテーマを復元する）
+        theme = str(self.config_manager.get("theme", "system")).lower()
+        if theme == "dark":
+            self.page.theme_mode = ft.ThemeMode.DARK
+        elif theme == "light":
+            self.page.theme_mode = ft.ThemeMode.LIGHT
+        else:
+            self.page.theme_mode = ft.ThemeMode.SYSTEM
         self.page.padding = 0
 
         # 終了時の処理
@@ -1709,17 +1715,41 @@ class MainWindow:
         if self.is_connected:
             self.page.run_task(self._disconnect)
 
+        # 次回も同じ大きさで開けるようウィンドウサイズを記憶する
+        try:
+            width = int(self.page.window.width or 0)
+            height = int(self.page.window.height or 0)
+            if width > 0 and height > 0:
+                self.config_manager.set("window_width", width)
+                self.config_manager.set("window_height", height)
+        except Exception:
+            pass
+
         # 設定保存
         self.config_manager.save_config()
 
     def _toggle_theme(self, e):
-        """テーマ（ダーク/ライト）を切り替え"""
-        if self.page.theme_mode == ft.ThemeMode.LIGHT:
-            self.page.theme_mode = ft.ThemeMode.DARK
-            self._log_message("ダークモードに切り替えました")
-        else:
+        """テーマ（ダーク/ライト）を切り替えて設定に保存する
+
+        以前は SYSTEM 状態から押すと見た目が変わらないことがあり，
+        さらに選択が保存されず再起動で戻ってしまっていた
+        """
+        if self.page.theme_mode == ft.ThemeMode.DARK:
             self.page.theme_mode = ft.ThemeMode.LIGHT
+            theme_name = "light"
             self._log_message("ライトモードに切り替えました")
+        else:
+            self.page.theme_mode = ft.ThemeMode.DARK
+            theme_name = "dark"
+            self._log_message("ダークモードに切り替えました")
+
+        # 次回起動時も同じテーマで開くように保存
+        try:
+            self.config_manager.set("theme", theme_name)
+            self.config_manager.save_config()
+        except Exception as e:
+            self._log_message(f"テーマ設定の保存に失敗しました: {e}")
+
         self.page.update()
 
     def _on_keyboard_event(self, e: ft.KeyboardEvent):
