@@ -175,6 +175,9 @@ class MainWindow:
             ], spacing=0, expand=True)
         )
 
+        # チャットが空のあいだは使い方の案内を出しておく
+        self._refresh_empty_hint()
+
     def _create_toolbar(self) -> ft.Container:
         """ツールバー作成"""
         config = self.config_manager.get_all()
@@ -300,8 +303,8 @@ class MainWindow:
         # チャットリスト
         self.chat_list = ft.ListView(
             expand=True,
-            spacing=5,
-            padding=10,
+            spacing=0,
+            padding=ft.padding.symmetric(vertical=4, horizontal=2),
             auto_scroll=True,
         )
 
@@ -401,17 +404,16 @@ class MainWindow:
                     content=ft.Column([
                         self.log_text,
                     ], scroll=ft.ScrollMode.AUTO),
-                    expand=True,
+                    height=150,
                     border=ft.border.all(1, ft.Colors.GREY_300),
                     border_radius=5,
                     padding=8,
                     bgcolor=ft.Colors.with_opacity(0.02, ft.Colors.BLACK),
                 ),
-            ], spacing=8, expand=True),
+            ], spacing=8, tight=True),
             padding=12,
             bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.GREY),
             border_radius=8,
-            expand=True,
         )
 
         # アクションボタン
@@ -435,6 +437,7 @@ class MainWindow:
                 stats_card,
                 lang_stats_card,
                 self.auto_scroll_switch,
+                ft.Container(expand=True),   # 余白を吸収して下の2つを底に寄せる
                 log_card,
                 action_buttons,
             ], spacing=10, expand=True),
@@ -949,6 +952,7 @@ class MainWindow:
         config = self.config_manager.get_all()
         channel = config.get("twitch_channel", "")
         self._log_message(f"Twitchチャンネル '{channel}' に接続しました")
+        self._refresh_empty_hint()
 
         # Twitch 単独構成のときだけステータス文言を確定させる
         # （both のときは YouTube 側の表示を壊さないようログのみ）
@@ -1036,6 +1040,7 @@ class MainWindow:
             if self.message_rate_text:
                 self.message_rate_text.value = "0/分"
 
+            self._refresh_empty_hint()
             self._log_message("接続を停止しました")
             self.page.update()
 
@@ -1074,6 +1079,7 @@ class MainWindow:
             if len(self.filtered_messages) > 1000:
                 self.filtered_messages.pop(0)
 
+            self._clear_empty_hint()
             self.chat_list.controls.append(self._create_message_widget(message))
             while len(self.chat_list.controls) > self.MAX_VISIBLE_MESSAGES:
                 self.chat_list.controls.pop(0)
@@ -1119,7 +1125,51 @@ class MainWindow:
         for msg in self.filtered_messages[-self.MAX_VISIBLE_MESSAGES:]:
             self.chat_list.controls.append(self._create_message_widget(msg))
 
+        self._refresh_empty_hint()
         self.page.update()
+
+    EMPTY_HINT_KEY = "empty_hint"
+
+    def _create_empty_hint(self) -> ft.Container:
+        """チャットが1件も無いときの案内"""
+        if self.is_connected:
+            icon = ft.Icons.HOURGLASS_EMPTY
+            title = "メッセージを待っています"
+            desc = "チャットが投稿されると，ここに原文と翻訳が並びます"
+        else:
+            icon = ft.Icons.PLAY_CIRCLE_OUTLINE
+            title = "「接続開始」で翻訳をはじめます"
+            desc = "チャンネル名や翻訳先の言語は「設定」から変更できます"
+
+        hint = ft.Container(
+            content=ft.Column([
+                ft.Icon(icon, size=44, color=ft.Colors.with_opacity(0.35, ft.Colors.GREY)),
+                ft.Text(title, size=15, weight=ft.FontWeight.W_500,
+                        color=ft.Colors.with_opacity(0.75, ft.Colors.GREY)),
+                ft.Text(desc, size=12,
+                        color=ft.Colors.with_opacity(0.55, ft.Colors.GREY)),
+            ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=8,
+               alignment=ft.MainAxisAlignment.CENTER),
+            alignment=ft.alignment.center,
+            padding=ft.padding.symmetric(vertical=60),
+        )
+        hint.data = self.EMPTY_HINT_KEY
+        return hint
+
+    def _clear_empty_hint(self):
+        """案内が出ていれば取り除く"""
+        self.chat_list.controls = [
+            c for c in self.chat_list.controls
+            if getattr(c, "data", None) != self.EMPTY_HINT_KEY
+        ]
+
+    def _refresh_empty_hint(self):
+        """チャットが空なら案内を出し，あれば消す"""
+        if not self.chat_list:
+            return
+        self._clear_empty_hint()
+        if not self.chat_list.controls:
+            self.chat_list.controls.append(self._create_empty_hint())
 
     def _create_message_widget(self, message: ChatMessage, is_pinned: bool = False) -> ft.Container:
         """メッセージウィジェット作成"""
@@ -1172,14 +1222,55 @@ class MainWindow:
         # ユーザー名の色（お気に入りは金色）
         username_color = ft.Colors.AMBER_700 if is_favorite else None
 
-        # メッセージカード
+        def mini_button(icon, tooltip, on_click, color=None):
+            """一覧を圧迫しない小さめのアイコンボタン"""
+            return ft.IconButton(
+                icon=icon,
+                icon_size=14,
+                icon_color=color,
+                tooltip=tooltip,
+                on_click=on_click,
+                width=26,
+                height=26,
+                style=ft.ButtonStyle(padding=0),
+            )
+
+        # 操作アイコンは普段は隠し，カーソルを載せたときだけ表示する
+        # （常時表示だと一覧が非常にうるさくなるため）
+        pin_button = (
+            mini_button(ft.Icons.PUSH_PIN, "ピン留め解除", unpin_message, ft.Colors.RED)
+            if is_pinned
+            else mini_button(ft.Icons.PUSH_PIN_OUTLINED, "ピン留め", pin_message)
+        )
+        action_buttons = [
+            pin_button,
+            mini_button(
+                ft.Icons.STAR if is_favorite else ft.Icons.STAR_BORDER,
+                "お気に入り解除" if is_favorite else "お気に入り登録",
+                toggle_favorite,
+                ft.Colors.AMBER if is_favorite else None,
+            ),
+            mini_button(ft.Icons.CONTENT_COPY, "メッセージをコピー", copy_message),
+        ]
+        if message.translation:
+            action_buttons.append(
+                mini_button(ft.Icons.COPY_ALL, "翻訳をコピー", copy_translation_only)
+            )
+
+        actions = ft.Row(
+            action_buttons,
+            spacing=0,
+            opacity=0,
+            animate_opacity=120,
+        )
+
         header_row = ft.Row([
             ft.Text(
                 message.timestamp.strftime("%H:%M:%S"),
                 size=10,
                 color=ft.Colors.GREY,
             ),
-        ], spacing=5)
+        ], spacing=5, height=22)
 
         # お気に入りアイコン
         if is_favorite:
@@ -1190,6 +1281,7 @@ class MainWindow:
         header_row.controls.extend([
             ft.Text(
                 f"{message.user}:",
+                size=13,
                 weight=ft.FontWeight.BOLD,
                 color=username_color,
             ),
@@ -1199,85 +1291,53 @@ class MainWindow:
                 color=ft.Colors.GREY,
             ),
             ft.Container(expand=True),
+            actions,
         ])
-
-        # アクションボタン
-        if is_pinned:
-            header_row.controls.append(
-                ft.IconButton(
-                    icon=ft.Icons.PUSH_PIN,
-                    icon_size=14,
-                    icon_color=ft.Colors.RED,
-                    tooltip="ピン留め解除",
-                    on_click=unpin_message,
-                )
-            )
-        else:
-            header_row.controls.append(
-                ft.IconButton(
-                    icon=ft.Icons.PUSH_PIN_OUTLINED,
-                    icon_size=14,
-                    tooltip="ピン留め",
-                    on_click=pin_message,
-                )
-            )
-
-        header_row.controls.append(
-            ft.IconButton(
-                icon=ft.Icons.STAR if is_favorite else ft.Icons.STAR_BORDER,
-                icon_size=14,
-                icon_color=ft.Colors.AMBER if is_favorite else None,
-                tooltip="お気に入り解除" if is_favorite else "お気に入り登録",
-                on_click=toggle_favorite,
-            )
-        )
-        header_row.controls.append(
-            ft.IconButton(
-                icon=ft.Icons.CONTENT_COPY,
-                icon_size=14,
-                tooltip="メッセージをコピー",
-                on_click=copy_message,
-            )
-        )
 
         content = ft.Column([
             header_row,
-            ft.Text(message.text, selectable=True),
-        ], spacing=2)
+            ft.Text(message.text, size=13, selectable=True),
+        ], spacing=1, tight=True)
 
-        # 翻訳がある場合
+        # 翻訳がある場合（毎行のアイコンはやめ，色と縦線で原文と区別する）
         if message.translation:
             content.controls.append(
                 ft.Row([
-                    ft.Icon(ft.Icons.TRANSLATE, size=16, color=ft.Colors.BLUE),
-                    ft.Text(message.translation, color=ft.Colors.BLUE_700, selectable=True, expand=True),
-                    ft.IconButton(
-                        icon=ft.Icons.COPY_ALL,
-                        icon_size=14,
-                        tooltip="翻訳をコピー",
-                        on_click=copy_translation_only,
+                    ft.Container(width=3, height=16, bgcolor=ft.Colors.BLUE_200,
+                                 border_radius=2, margin=ft.margin.only(top=2)),
+                    ft.Text(
+                        message.translation,
+                        size=13,
+                        color=ft.Colors.BLUE_700,
+                        selectable=True,
+                        expand=True,
                     ),
-                ], spacing=5)
+                ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.START)
             )
 
         # 背景色（お気に入りはアンバー、ピン留めは黄色）
         if is_pinned:
             bgcolor = ft.Colors.with_opacity(0.15, ft.Colors.YELLOW)
-            border_color = ft.Colors.YELLOW_700
         elif is_favorite:
             bgcolor = ft.Colors.with_opacity(0.08, ft.Colors.AMBER)
-            border_color = ft.Colors.AMBER_400
         else:
             bgcolor = None
-            border_color = ft.Colors.GREY_400
 
+        def on_hover(e):
+            # ハイライトと操作アイコンの表示をまとめて切り替える
+            actions.opacity = 1 if e.data == "true" else 0
+            actions.update()
+            self._on_message_hover(e, is_favorite, is_pinned)
+
+        # 枠で囲まず下線だけで区切り，視線が分断されないようにする
         return ft.Container(
             content=content,
-            padding=10,
+            padding=ft.padding.symmetric(vertical=5, horizontal=10),
             bgcolor=bgcolor,
-            border=ft.border.all(1, border_color),
-            border_radius=5,
-            on_hover=lambda e: self._on_message_hover(e, is_favorite, is_pinned),
+            border=ft.border.only(
+                bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.4, ft.Colors.GREY))
+            ),
+            on_hover=on_hover,
         )
 
     def _on_message_hover(self, e, is_favorite: bool = False, is_pinned: bool = False):
