@@ -11,6 +11,15 @@ twitchTransFreeNeo - Twitchチャット翻訳ツール（GUI版）
 - PyInstallerでバイナリビルド
 - uvでパッケージ管理
 
+## 保存先・アーカイブ
+
+- **作業場**: `~/_data/work/デモ・配信/twitchTransFreeNeo/`（自動バックアップなし）
+- **ソースコードの正本**: GitHub `sayonari/twitchTransFreeNeo`
+- **記録・成果物の正本**: Google Drive `マイドライブ/nishimura/program/twitchTransFreeNeo/`
+  - 区切り（成果物完成・push・タグ発行・セッション終了）ごとに
+    `./.agent/scripts/sync_to_drive.sh` を実行する
+  - ソースコード・`.venv/`・`dist/`・`config.json`（OAuthトークンを含む）は同期しない
+
 ## 技術スタック
 - **GUI**: Flet（Flutter/Dartベース、Material Design）
 - **バイナリ化**: PyInstaller

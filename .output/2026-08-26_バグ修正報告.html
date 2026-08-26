@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>twitchTransFreeNeo v0.2.28_Beta 修正報告</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#fff; --ink:#1a1d21; --muted:#6b7280;
+    --line:#e3e6ea; --accent:#6441a5; --ok:#0f9d58; --bad:#d93025; --warn:#f4a300;
+    --code:#f2f3f5;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:32px 20px;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",sans-serif;
+    line-height:1.75;}
+  .wrap{max-width:1000px;margin:0 auto}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:.02em}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:28px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:22px 24px;margin-bottom:20px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  h2{font-size:18px;margin:0 0 14px;padding-left:11px;border-left:4px solid var(--accent)}
+  h3{font-size:15px;margin:20px 0 8px;color:#374151}
+  p{margin:0 0 12px}
+  ul{margin:0 0 12px;padding-left:22px}
+  li{margin-bottom:6px}
+  code{background:var(--code);padding:2px 6px;border-radius:4px;
+    font-family:"SF Mono",Menlo,monospace;font-size:.88em}
+  pre{background:var(--code);padding:14px 16px;border-radius:8px;overflow-x:auto;
+    font-family:"SF Mono",Menlo,monospace;font-size:13px;line-height:1.6;margin:0 0 12px}
+  table{width:100%;border-collapse:collapse;margin:0 0 12px;font-size:14px}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+  th{background:#f0f1f4;font-weight:600}
+  .tag{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;
+    font-weight:600;white-space:nowrap}
+  .t-fix{background:#e7f5ec;color:var(--ok)}
+  .t-crit{background:#fdecea;color:var(--bad)}
+  .t-imp{background:#fff5e0;color:#9a6700}
+  .box{border-left:4px solid var(--warn);background:#fffbf0;padding:13px 16px;
+    border-radius:0 8px 8px 0;margin:0 0 14px}
+  .box.ok{border-color:var(--ok);background:#f1f9f4}
+  .box.bad{border-color:var(--bad);background:#fdf2f1}
+  .reply{background:#fbfbfc;border:1px solid var(--line);border-radius:8px;
+    padding:14px 16px;margin:0 0 8px;white-space:pre-wrap;font-size:14.5px}
+  .count{color:var(--muted);font-size:12px;margin:0 0 18px}
+  .flow{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+  .step{background:#f0eef7;border:1px solid #d9d2ec;border-radius:8px;
+    padding:8px 13px;font-size:13.5px}
+  .arrow{color:var(--muted)}
+  .muted{color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>twitchTransFreeNeo v0.2.28_Beta 修正報告</h1>
+<div class="sub">2026-08-26 ／ 利用者2名からのエラー報告を起点とした全体点検</div>
+
+<div class="card">
+<h2>何が起きていたか</h2>
+<p>チャットに翻訳結果のかわりに <code>Error 500 (Server Error)!!1500.That's an error...</code> というGoogleのエラーページ本文が投稿される、という報告でした。原因は<strong>3つの問題の重なり</strong>です。</p>
+
+<table>
+<tr><th style="width:30px"></th><th style="width:210px">問題</th><th>内容</th></tr>
+<tr>
+  <td><span class="tag t-crit">主因</span></td>
+  <td>Google側の間欠障害</td>
+  <td><code>deep-translator</code> が使う <code>translate.google.com/m</code> が 2026-08-24 頃からエラーページを返すようになった。実測で<strong>10回中5回</strong>失敗する状態。</td>
+</tr>
+<tr>
+  <td><span class="tag t-crit">増幅</span></td>
+  <td>エラー文をそのまま採用</td>
+  <td>ライブラリがエラーページ本文を「翻訳結果」として返し、アプリはそれを検査せず投稿していた。</td>
+</tr>
+<tr>
+  <td><span class="tag t-crit">固着</span></td>
+  <td>エラー文をキャッシュ</td>
+  <td>そのエラー文が <code>translations.db</code> に保存され、<strong>Googleが復旧しても同じ発言に対して永久にエラー文を出し続ける</strong>状態に。</td>
+</tr>
+</table>
+
+<div class="box bad">
+<strong>「27版にしても直らない」の理由</strong><br>
+3つ目のキャッシュ固着が原因です。バージョンを上げてもDBに残ったエラー文がそのまま再生されるため、アプリ側の更新では当たりませんでした。今回の修正では<strong>起動時に自動で掃除</strong>します。
+</div>
+
+<div class="box">
+<strong>「システム診断も全て正常」の理由</strong><br>
+旧診断は <code>translate.google.co.jp</code> にアクセスして<strong>200が返れば正常</strong>と判定するだけで、実際の翻訳を試していませんでした。トップページは生きていたため「正常」と表示されていました。実翻訳で検証するよう修正済みです。
+</div>
+</div>
+
+<div class="card">
+<h2>修正後の動作</h2>
+<p>翻訳リクエストを多段化し、各段で「エラーページかどうか」を検査します。</p>
+<div class="flow">
+  <span class="step">① clients5.google.com<br><span class="muted">訳文＋検出言語を1回で取得</span></span>
+  <span class="arrow">→</span>
+  <span class="step">② translate.googleapis.com<br><span class="muted">①が落ちた時</span></span>
+  <span class="arrow">→</span>
+  <span class="step">③ deep-translator<br><span class="muted">従来経路・最終手段</span></span>
+</div>
+<p>すべて失敗した場合は<strong>翻訳を出さずに黙ってスキップ</strong>します。エラー文がチャットに流れることはありません。</p>
+
+<h3>検証結果</h3>
+<pre>【全経路が障害中】     → 結果: None   ※投稿せずスキップ（旧版はエラー文を投稿）
+【第一候補のみ障害】   → 別経路へ自動フォールバック
+【通常時】             → 'Is it fixed now?' → '今は修正されていますか？'</pre>
+
+<div class="box ok">
+<strong>誤検出への配慮</strong><br>
+「それはエラーです」の英訳は <code>That's an error</code> になり得ます。単純な文字列一致で弾くと正当な翻訳まで消えるため、判定は <code>Error 5xx (Server Error)</code> 形式、または <code>That's an error</code> と <code>That's all we know</code> の<strong>同時出現</strong>に限定しました。実際に「That's an error」単体は翻訳として通ることを確認済みです。
+</div>
+</div>
+
+<div class="card">
+<h2>調査中に見つかった別の重大バグ</h2>
+
+<h3><span class="tag t-crit">重大</span> 言語検出が一度も機能していなかった</h3>
+<p><code>single_detection(text, api_key=None)</code> は APIキー必須のため<strong>必ず例外を投げます</strong>。つまり検出は常にフォールバックの簡易判定だけで動いており、こう処理されていました。</p>
+<pre>かな/カタカナ → ja、ハングル → ko、漢字 → zh-CN、キリル → ru …
+それ以外のラテン文字は 全部 "en"</pre>
+<p>結果、<strong>スペイン語・ポルトガル語・フランス語などがすべて英語と誤判定</strong>されていました。ウクライナ語→ロシア語、ペルシャ語→アラビア語も同様です。</p>
+<table>
+<tr><th>入力</th><th>修正前</th><th>修正後</th></tr>
+<tr><td>Hola, buenas tardes amigos</td><td>en</td><td><strong>es</strong></td></tr>
+<tr><td>Obrigado pelo stream!</td><td>en</td><td><strong>pt</strong></td></tr>
+<tr><td>Merci beaucoup pour le stream</td><td>en</td><td><strong>fr</strong></td></tr>
+<tr><td>Привіт, як справи?</td><td>ru</td><td><strong>uk</strong></td></tr>
+<tr><td>سلام حال شما چطور است</td><td>ar</td><td><strong>fa</strong></td></tr>
+</table>
+
+<h3><span class="tag t-crit">重大</span> 翻訳キャッシュが保存されていなかった</h3>
+<p>データベースのパスが相対指定だったため、起動時のカレントディレクトリによっては書き込みに失敗していました。実際、<code>~/Library/Application Support/twitchTransFreeNeo/</code> には <code>config.json</code> はあるのに <code>translations.db</code> が<strong>存在しませんでした</strong>。設定ファイルと同じ場所に統一しました。</p>
+<p class="muted">※ キャッシュが効かない＝毎回APIを叩くため、レート制限（429）も招きやすい状態でした。</p>
+
+<h3><span class="tag t-imp">改善</span> チャット表示が毎回100件を再描画していた</h3>
+<p>メッセージが1件届くたびに表示リストを全消去し、100件分のウィジェットを作り直していました。差分更新に変更しています。チャットが流れる配信での軽さに効きます。</p>
+</div>
+
+<div class="card">
+<h2>その他の修正一覧</h2>
+<table>
+<tr><th style="width:200px">項目</th><th>内容</th></tr>
+<tr><td>起動挨拶の二重投稿</td><td>再接続時に <code>event_channel_joined</code> が複数回発火し、同じ挨拶が2回流れていた（1枚目のスクショで確認）</td></tr>
+<tr><td>長文が投稿できない</td><td>Twitchの500文字上限を超えると送信失敗していた。切り詰めて投稿するよう修正</td></tr>
+<tr><td>読み上げの二重短縮</td><td>本文を短縮した後にユーザー名込みで再度短縮され、<strong>名前が長い人の発言がほとんど読まれなかった</strong></td></tr>
+<tr><td>読み上げ言語の判定</td><td>入力言語だけで判定していたため「日本語だけ読み上げる」設定で翻訳文が読まれなかった。入力・出力それぞれで判定</td></tr>
+<tr><td>gTTS言語コード</td><td><code>iw</code>→<code>he</code>、<code>jw</code>→<code>jv</code>、地域バリアントの変換を追加。未対応言語は理由を表示</td></tr>
+<tr><td>読み上げキュー</td><td>停止時に破棄するよう修正（再開時に古い発言が読まれていた）</td></tr>
+<tr><td>接続状態の表示</td><td>接続タスクの結果を待たず「接続中」と表示していた。認証失敗時は理由をログに出し、表示を未接続へ戻す</td></tr>
+<tr><td>テーマ設定</td><td>切り替えても保存されず再起動で戻っていた。またシステムテーマから切り替えると見た目が変わらないことがあった</td></tr>
+<tr><td>ウィンドウサイズ</td><td>変更しても次回起動時に元に戻っていた</td></tr>
+<tr><td>旧コードの削除</td><td>tkinter時代の残骸4ファイル（計1,867行）が残存。エントリポイントから到達せず、うち1つは存在しないモジュールを参照して壊れていた</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h2>返信文案（Twitter向け・端的）</h2>
+
+<h3>しらたまさん（DM）宛</h3>
+<div class="reply">ご報告ありがとうございます！原因が判明しました。
+
+Google翻訳側が一時的にエラーを返すようになり、そのエラー文がそのまま翻訳結果として表示され、さらにアプリ内に記憶されてしまう不具合でした。27版で直らなかったのはこの「記憶」が残っていたためです。
+
+修正版 v0.2.28_Beta を公開しましたので、お試しいただけると助かります🙏</div>
+<div class="count">約170文字 ／ 長ければ2つ目の段落を「そのエラー文をアプリが記憶してしまう不具合でした」に短縮できます</div>
+
+<h3>Meruruさん（リプライ）宛</h3>
+<div class="reply">ご報告ありがとうございます！Google翻訳側の一時的な障害で、そのエラー文が翻訳結果として出てしまう不具合でした。
+
+「診断は正常」と出てしまう点も原因で、実際に翻訳を試さずに接続確認だけしていたためです。あわせて修正しました。
+
+v0.2.28_Beta をお試しください🙇</div>
+<div class="count">約150文字</div>
+
+<h3>短縮版（1ツイートに収めたい場合）</h3>
+<div class="reply">ご報告ありがとうございます！Google翻訳側の障害でエラー文がそのまま表示され、さらにアプリが記憶してしまう不具合でした（27版で直らなかったのはこのためです）。修正版 v0.2.28_Beta を公開しましたのでお試しください🙏</div>
+<div class="count">約110文字</div>
+</div>
+
+<div class="card">
+<h2>現在の状態と次にやること</h2>
+<div class="box">
+<strong>タグ発行は行っていません。</strong> コミットはローカルに3本積んだ状態です（push もしていません）。タグ発行＝GitHub Actions のビルドと公開が走る不可逆な操作のため、ご確認をお待ちしています。
+</div>
+<pre>257a982  fix: テーマとウィンドウサイズが保存されない問題を修正
+1f2812b  fix: 翻訳・読み上げ・接続まわりの不具合を修正 (v0.2.28_Beta)
+b8b7376  docs: OAuthガイドのリンク修正とプロジェクトメモリの更新</pre>
+
+<h3>ご確認いただきたいこと</h3>
+<ul>
+  <li><strong>実機での動作確認</strong> — <code>uv run python run.py</code> で起動できることは確認済みですが、実際のチャット接続はテストできていません</li>
+  <li><strong>タグ発行の可否</strong> — 良ければ <code>v0.2.28_Beta</code> を push してビルドさせます</li>
+  <li><code>build_nuitka.py</code> がリポジトリ未追跡のまま残っています。Nuitkaは廃止済みのため、削除してよいか判断をお願いします</li>
+</ul>
+
+<h3>プロジェクトの場所</h3>
+<p>Google Drive 内の <code>_Legacy/twitch/</code> から <code>~/_data/work/デモ・配信/twitchTransFreeNeo/</code> へ移設し、Claude Code の対話履歴150件も追従させました。</p>
+</div>
+
+<p class="muted" style="text-align:center;margin-top:26px">
+twitchTransFreeNeo v0.2.28_Beta ／ 2026-08-26 作成
+</p>
+
+</div>
+</body>
+</html>
