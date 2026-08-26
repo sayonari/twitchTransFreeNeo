@@ -4,12 +4,15 @@ Next Generation Twitch Chat Translator with GUI
 
 ## 概要
 
-twitchTransFreeNeoは、Twitchのチャット翻訳を行うGUIアプリケーションです。従来のCUI版「twitchTransFreeNext」をベースに、使いやすいGUIインターフェースを提供します。
+twitchTransFreeNeoは、**Twitch と YouTube Live** のチャット翻訳を行うGUIアプリケーションです。従来のCUI版「twitchTransFreeNext」をベースに、使いやすいGUIインターフェースを提供します。
+
+視聴者が投稿した外国語のコメントを自動で翻訳してチャットに投稿し、逆に配信者の日本語コメントを外国語へ翻訳することもできます。
 
 ## 主な機能
 
 ### 核心機能
-- **リアルタイム翻訳**: Twitchチャットメッセージの自動翻訳
+- **リアルタイム翻訳**: Twitch / YouTube Live のチャットメッセージを自動翻訳
+- **2プラットフォーム対応**: Twitch・YouTube Live のどちらか、または同時に監視
 - **複数翻訳エンジン対応**: Google翻訳、DeepL翻訳
 - **言語自動検出**: メッセージの言語を自動判定
 - **翻訳履歴保存**: SQLiteデータベースによる効率的な翻訳キャッシュ
@@ -33,34 +36,33 @@ twitchTransFreeNeoは、Twitchのチャット翻訳を行うGUIアプリケー�
 
 1. [Releases](https://github.com/sayonari/twitchTransFreeNeo/releases)から最新版をダウンロード
 2. お使いのOSに対応したファイルを選択：
-   - Windows: `twitchTransFreeNeo_vX.X.X_windows.zip`
-   - macOS (Apple Silicon): `twitchTransFreeNeo_vX.X.X_macos_M1.tar.gz`
-   - macOS (Intel): `twitchTransFreeNeo_vX.X.X_macos_Intel.tar.gz`
-   - Linux: `twitchTransFreeNeo_vX.X.X_linux.tar.gz`
+   - Windows: `twitchTransFreeNeo_windows_X.X.X.zip`
+   - macOS (Apple Silicon): `twitchTransFreeNeo_macos_arm64_X.X.X.zip`
+   - Linux: `twitchTransFreeNeo_linux_X.X.X.tar.gz`
 3. ダウンロードしたファイルを展開
 4. 実行ファイルを起動
 
 ### ソースコードから実行
 
 #### 必要環境
-- Python 3.8以上
-- tkinter（通常Pythonに含まれています）
+- Python 3.10以上 3.12以下
+- GUI は Flet（Flutter ベース）で描画するため、追加の GUI ライブラリは不要です
 
-#### 手順
+#### 手順（uv を使う場合・推奨）
 
-1. **リポジトリのクローン**
 ```bash
 git clone https://github.com/sayonari/twitchTransFreeNeo.git
 cd twitchTransFreeNeo
+uv sync
+uv run python run.py
 ```
 
-2. **依存関係のインストール**
+#### 手順（pip を使う場合）
+
 ```bash
+git clone https://github.com/sayonari/twitchTransFreeNeo.git
+cd twitchTransFreeNeo
 pip install -r requirements.txt
-```
-
-3. **アプリケーションの起動**
-```bash
 python run.py
 ```
 
