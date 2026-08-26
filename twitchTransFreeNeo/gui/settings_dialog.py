@@ -155,7 +155,6 @@ class SettingsDialog:
 
     def show(self):
         """設定ダイアログを表示"""
-        print("DEBUG: SettingsDialog.show() - Creating tabs...")
         try:
             self.tabs = ft.Tabs(
                 selected_index=0,
@@ -189,7 +188,6 @@ class SettingsDialog:
                 ],
                 expand=1,
             )
-            print("DEBUG: Tabs created successfully")
 
             self.dialog = ft.AlertDialog(
                 modal=True,
@@ -226,10 +224,8 @@ class SettingsDialog:
                     ),
                 ],
             )
-            print("DEBUG: AlertDialog created")
 
             self.page.open(self.dialog)
-            print("DEBUG: page.open(dialog) called")
         except Exception as ex:
             print(f"ERROR in SettingsDialog.show(): {ex}")
             import traceback

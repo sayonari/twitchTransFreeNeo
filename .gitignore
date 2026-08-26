@@ -206,3 +206,7 @@ twitchTransFreeNext/
 # Test files
 test_*.py
 config.json
+
+# 認証情報（絶対にコミットしない）
+youtube_token.json
+*_token.json

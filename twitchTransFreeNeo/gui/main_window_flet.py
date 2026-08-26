@@ -774,7 +774,6 @@ class MainWindow:
     def _toggle_connection(self, e):
         """接続切り替え"""
         self._log_message("接続ボタンが押されました")
-        print("DEBUG: _toggle_connection called")
         if self.is_connected:
             self.page.run_task(self._disconnect)
         else:
@@ -1525,7 +1524,6 @@ class MainWindow:
     def _clear_chat(self, e):
         """チャットクリア"""
         self._log_message("履歴クリアボタンが押されました")
-        print("DEBUG: _clear_chat called")
         self.messages.clear()
         self.filtered_messages.clear()
         self.chat_list.controls.clear()
@@ -1582,14 +1580,10 @@ class MainWindow:
     def _open_settings(self, e):
         """設定画面を開く"""
         self._log_message("設定ボタンが押されました")
-        print("DEBUG: _open_settings called")
         try:
             config = self.config_manager.get_all()
-            print(f"DEBUG: config loaded: {len(config)} items")
             settings_dialog = SettingsDialog(self.page, config, self._on_config_changed)
-            print("DEBUG: SettingsDialog created")
             settings_dialog.show()
-            print("DEBUG: SettingsDialog.show() called")
         except Exception as ex:
             print(f"ERROR in _open_settings: {ex}")
             import traceback
@@ -1651,15 +1645,11 @@ class MainWindow:
     def _open_diagnostics(self, e):
         """診断画面を開く"""
         self._log_message("診断ボタンが押されました")
-        print("DEBUG: _open_diagnostics called")
         try:
             from .diagnostics_dialog import DiagnosticsDialog
             config = self.config_manager.get_all()
-            print(f"DEBUG: config loaded: {len(config)} items")
             diag_dialog = DiagnosticsDialog(self.page, config)
-            print("DEBUG: DiagnosticsDialog created")
             diag_dialog.show()
-            print("DEBUG: DiagnosticsDialog.show() called")
         except Exception as ex:
             print(f"ERROR in _open_diagnostics: {ex}")
             import traceback
@@ -1669,7 +1659,6 @@ class MainWindow:
     def _show_help(self, e):
         """ヘルプ表示"""
         self._log_message("ヘルプボタンが押されました")
-        print("DEBUG: _show_help called")
         try:
             from .. import __version__
         except:

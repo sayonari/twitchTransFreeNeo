@@ -54,16 +54,33 @@ class YouTubeAuthManager:
         self._token_path = self._get_token_path()
 
     def _get_token_path(self) -> Path:
-        """トークン保存パスを取得"""
-        # 設定ファイルと同じ場所に保存
+        """トークン保存パスを取得（設定ファイルと同じ場所）
+
+        以前は存在しない ConfigManager._get_config_dir() を呼んでおり，
+        その AttributeError を握りつぶして常に ~/.twitchTransFreeNeo/ へ
+        保存していた（設定ファイルとは別の場所になっていた）
+        """
         try:
-            from ..utils.config_manager import ConfigManager
-            config_dir = ConfigManager()._get_config_dir()
-        except:
+            from ..utils.config_manager import get_application_path
+            config_dir = Path(get_application_path())
+        except Exception as e:
+            print(f"トークン保存先の解決に失敗しました: {e}")
             config_dir = Path.home() / ".twitchTransFreeNeo"
 
         config_dir.mkdir(parents=True, exist_ok=True)
-        return config_dir / "youtube_token.json"
+        token_path = config_dir / "youtube_token.json"
+
+        # 旧保存先にトークンがあれば引き継ぐ（再認証を求めないため）
+        legacy_path = Path.home() / ".twitchTransFreeNeo" / "youtube_token.json"
+        if not token_path.exists() and legacy_path.exists() and legacy_path != token_path:
+            try:
+                import shutil
+                shutil.copy2(legacy_path, token_path)
+                print(f"YouTube 認証情報を引き継ぎました: {legacy_path} → {token_path}")
+            except Exception as e:
+                print(f"YouTube 認証情報の引き継ぎに失敗しました: {e}")
+
+        return token_path
 
     def has_credentials(self) -> bool:
         """認証情報があるかチェック"""
