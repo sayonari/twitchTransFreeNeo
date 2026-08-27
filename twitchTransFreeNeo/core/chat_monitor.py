@@ -300,7 +300,8 @@ if TWITCHIO_AVAILABLE:
                 return
             
             # データベースから既訳語チェック
-            cached_translation = await self.database.get_translation(final_text, target_lang)
+            engine = self.config.get("translator", "google")
+            cached_translation = await self.database.get_translation(final_text, target_lang, engine)
             
             if cached_translation:
                 translated_text = cached_translation
@@ -310,7 +311,7 @@ if TWITCHIO_AVAILABLE:
                 
                 if translated_text:
                     # データベースに保存
-                    await self.database.save_translation(final_text, translated_text, target_lang)
+                    await self.database.save_translation(final_text, translated_text, target_lang, engine)
             
             if not translated_text:
                 return

@@ -50,6 +50,8 @@ class TranslationEngine:
         # 言語検出のリクエストで得た訳文を短期保持し，直後の翻訳要求で再利用する
         # （検出と翻訳で API を2回叩かないための最適化）
         self._recent: "OrderedDict[Tuple[str, str], str]" = OrderedDict()
+        self.deepl_error = ""
+        self._deepl_warned = False
         self._init_translators()
 
     def _cache_put(self, text: str, target_lang: str, translation: str):
@@ -64,18 +66,21 @@ class TranslationEngine:
 
     def _init_translators(self):
         """翻訳エンジンを初期化"""
-        try:
-            # Google Translator（deep-translatorは毎回インスタンスを作成するため、利用可能フラグのみ保持）
-            self.google_available = True
+        # Google Translator（deep-translatorは毎回インスタンスを作成するため、利用可能フラグのみ保持）
+        self.google_available = True
+        self.deepl_error = ""
 
-            # DeepL Translator（APIキーがある場合のみ）
-            deepl_api_key = self.config.get("deepl_api_key", "")
-            if deepl_api_key:
+        # DeepL Translator（APIキーがある場合のみ）
+        deepl_api_key = self.config.get("deepl_api_key", "")
+        if deepl_api_key:
+            try:
                 self.deepl_translator = deepl.Translator(deepl_api_key)
-        except Exception as e:
-            print(f"翻訳エンジン初期化エラー: {e}")
-            self.google_available = False
-            self.deepl_translator = None
+            except Exception as e:
+                # 以前はここで Google も無効化したうえ、エラーを黙って握りつぶしていたため
+                # DeepL を選んでいるのに Google へ送信され続けていた
+                self.deepl_translator = None
+                self.deepl_error = str(e)
+                print(f"DeepL の初期化に失敗しました: {e}")
     
     async def detect_language(self, text: str) -> Optional[str]:
         """言語検出
@@ -244,9 +249,17 @@ class TranslationEngine:
                 self._init_translators()
                 
             translator_type = self.config.get("translator", "google")
-            
-            if translator_type == "deepl" and self.deepl_translator:
-                return await self._translate_with_deepl(text, target_lang, source_lang)
+
+            if translator_type == "deepl":
+                if self.deepl_translator:
+                    return await self._translate_with_deepl(text, target_lang, source_lang)
+                # DeepL を選んでいるのに使えない状態で Google へ流すと、
+                # 利用者が意図しない送信先へチャットが送られてしまう
+                if not self._deepl_warned:
+                    self._deepl_warned = True
+                    reason = self.deepl_error or "APIキーが設定されていません"
+                    print(f"DeepL が利用できないため翻訳を行いません: {reason}")
+                return None
             elif translator_type == "google":
                 return await self._translate_with_google(text, target_lang)
             elif self.config.get("gas_url"):
@@ -399,7 +412,7 @@ class TranslationEngine:
         try:
             if not self.deepl_translator:
                 print("DeepL翻訳エラー: DeepLトランスレーターが初期化されていません")
-                return await self._translate_with_google(text, target_lang)
+                return None
             
             # DeepL言語コード変換
             deepl_lang_dict = {
@@ -425,16 +438,16 @@ class TranslationEngine:
                     return result.text if hasattr(result, 'text') else str(result)
                 else:
                     print(f"DeepL翻訳エラー: 結果が空です")
-                    return await self._translate_with_google(text, target_lang)
+                    return None
             else:
-                # DeepLで対応していない言語はGoogleで翻訳
-                print(f"DeepL翻訳: 対応していない言語 {target_lang}, Googleにフォールバック")
-                return await self._translate_with_google(text, target_lang)
+                # DeepL が対応していない言語は翻訳しない
+                # （利用者は DeepL を選んでいるため、黙って Google へ送らない）
+                print(f"DeepL翻訳: 対応していない言語です: {target_lang}")
+                return None
                 
         except Exception as e:
             print(f"DeepL翻訳エラー: {e}")
-            # フォールバック: Google翻訳
-            return await self._translate_with_google(text, target_lang)
+            return None
     
     async def _translate_with_gas(self, text: str, target_lang: str, source_lang: str) -> Optional[str]:
         """Google Apps Script翻訳"""

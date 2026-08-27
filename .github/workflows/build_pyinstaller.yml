@@ -99,8 +99,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: false
-          prerelease: true
-          make_latest: false
+          # タグ名に Beta / beta / rc が含まれるときだけ事前公開扱いにする
+          # （v1.0.0 のような正式タグは通常リリースとして latest になる）
+          prerelease: ${{ contains(github.ref_name, 'Beta') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          make_latest: ${{ !(contains(github.ref_name, 'Beta') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc')) }}
           files: |
             dist/*.tar.gz
             dist/*.zip

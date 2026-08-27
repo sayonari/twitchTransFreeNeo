@@ -38,14 +38,20 @@ class TranslationDatabase:
                     message TEXT NOT NULL,
                     target_lang TEXT NOT NULL,
                     translation TEXT NOT NULL,
+                    engine TEXT NOT NULL DEFAULT 'google',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(message, target_lang)
+                    UNIQUE(message, target_lang, engine)
                 )
             ''')
 
+            # 旧スキーマ（エンジン列なし）からの移行
+            # 翻訳エンジンを区別していなかったため，DeepL に切り替えても
+            # 以前の Google の訳が返ってきてしまっていた
+            self._migrate_add_engine_column(cursor)
+
             cursor.execute('''
                 CREATE INDEX IF NOT EXISTS idx_message_lang
-                ON translations(message, target_lang)
+                ON translations(message, target_lang, engine)
             ''')
 
             conn.commit()
@@ -54,6 +60,36 @@ class TranslationDatabase:
             conn.close()
         except Exception as e:
             print(f"データベース初期化エラー: {e}")
+
+    def _migrate_add_engine_column(self, cursor):
+        """旧スキーマのテーブルに engine 列を足して作り直す"""
+        try:
+            cursor.execute("PRAGMA table_info(translations)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "engine" in columns:
+                return
+
+            print("翻訳キャッシュのスキーマを更新します（翻訳エンジンを区別するため）")
+            cursor.execute("ALTER TABLE translations RENAME TO translations_old")
+            cursor.execute("""
+                CREATE TABLE translations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    message TEXT NOT NULL,
+                    target_lang TEXT NOT NULL,
+                    translation TEXT NOT NULL,
+                    engine TEXT NOT NULL DEFAULT 'google',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(message, target_lang, engine)
+                )
+            """)
+            cursor.execute("""
+                INSERT OR IGNORE INTO translations (message, target_lang, translation, engine, created_at)
+                SELECT message, target_lang, translation, 'google', created_at FROM translations_old
+            """)
+            cursor.execute("DROP TABLE translations_old")
+            print("  → 既存の訳は Google のものとして引き継ぎました")
+        except Exception as e:
+            print(f"翻訳キャッシュの移行に失敗しました: {e}")
 
     def _purge_error_pages(self, conn):
         """翻訳サービスのエラーページ文面がキャッシュされた行を削除する
@@ -86,7 +122,8 @@ class TranslationDatabase:
         except Exception as e:
             print(f"翻訳キャッシュ浄化エラー: {e}")
 
-    async def save_translation(self, message: str, translation: str, target_lang: str) -> bool:
+    async def save_translation(self, message: str, translation: str, target_lang: str,
+                               engine: str = "google") -> bool:
         """翻訳を保存"""
         try:
             # 翻訳サービスのエラーページ文面は保存しない
@@ -98,9 +135,9 @@ class TranslationDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 await db.execute(
                     '''INSERT OR REPLACE INTO translations
-                       (message, target_lang, translation)
-                       VALUES (?, ?, ?)''',
-                    (message, target_lang, translation)
+                       (message, target_lang, translation, engine)
+                       VALUES (?, ?, ?, ?)''',
+                    (message, target_lang, translation, engine)
                 )
                 await db.commit()
             return True
@@ -108,14 +145,15 @@ class TranslationDatabase:
             print(f"翻訳保存エラー: {e}")
             return False
 
-    async def get_translation(self, message: str, target_lang: str) -> Optional[str]:
-        """翻訳を取得"""
+    async def get_translation(self, message: str, target_lang: str,
+                              engine: str = "google") -> Optional[str]:
+        """翻訳を取得（同じ翻訳エンジンで訳したものだけを返す）"""
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute(
                     '''SELECT translation FROM translations
-                       WHERE message = ? AND target_lang = ?''',
-                    (message, target_lang)
+                       WHERE message = ? AND target_lang = ? AND engine = ?''',
+                    (message, target_lang, engine)
                 )
                 row = await cursor.fetchone()
                 if not row:
