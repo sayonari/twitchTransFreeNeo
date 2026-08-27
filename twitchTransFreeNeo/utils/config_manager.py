@@ -232,13 +232,35 @@ class ConfigManager:
         return config
     
     def save_config(self) -> bool:
-        """設定ファイルを保存する"""
+        """設定ファイルを保存する
+
+        直接上書きすると、書き込み中にアプリが終了した場合に
+        設定ファイルが壊れてトークンごと失われる。
+        一時ファイルへ書いてから置き換えることで、
+        途中で中断されても元のファイルが残るようにする
+        """
+        tmp_path = f"{self.config_file}.tmp"
         try:
-            with open(self.config_file, 'w', encoding='utf-8') as f:
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 json.dump(self.config, f, ensure_ascii=False, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+
+            # 認証情報を含むため、本人だけが読める権限にする
+            try:
+                os.chmod(tmp_path, 0o600)
+            except OSError:
+                pass
+
+            os.replace(tmp_path, self.config_file)  # 置き換えは不可分に行われる
             return True
         except Exception as e:
             print(f"設定ファイル保存エラー: {e}")
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
         return False
     
     def get(self, key: str, default: Any = None) -> Any:

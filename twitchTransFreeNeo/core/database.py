@@ -56,7 +56,16 @@ class TranslationDatabase:
 
             conn.commit()
             self._purge_error_pages(conn)
+            purged = self._purge_old_entries(conn)
             conn.commit()
+
+            # VACUUM はトランザクションの外でしか実行できない
+            if purged:
+                try:
+                    conn.execute("VACUUM")
+                except Exception as e:
+                    print(f"データベース最適化をスキップしました: {e}")
+
             conn.close()
         except Exception as e:
             print(f"データベース初期化エラー: {e}")
@@ -90,6 +99,28 @@ class TranslationDatabase:
             print("  → 既存の訳は Google のものとして引き継ぎました")
         except Exception as e:
             print(f"翻訳キャッシュの移行に失敗しました: {e}")
+
+    # 翻訳キャッシュの保持期間（これより古いものは起動時に削除する）
+    KEEP_DAYS = 60
+
+    def _purge_old_entries(self, conn):
+        """古くなった翻訳を削除してデータベースが際限なく増えるのを防ぐ
+
+        削除処理は用意されていたものの、どこからも呼ばれていなかった
+        """
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "DELETE FROM translations WHERE created_at < datetime('now', ? || ' days')",
+                (-self.KEEP_DAYS,),
+            )
+            removed = cursor.rowcount
+            if removed and removed > 0:
+                print(f"翻訳キャッシュ整理: {self.KEEP_DAYS}日より古い {removed} 件を削除")
+                return True
+        except Exception as e:
+            print(f"翻訳キャッシュ整理エラー: {e}")
+        return False
 
     def _purge_error_pages(self, conn):
         """翻訳サービスのエラーページ文面がキャッシュされた行を削除する

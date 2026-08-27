@@ -154,10 +154,10 @@ if TWITCHIO_AVAILABLE:
             # 実際に接続が確立したことを GUI へ伝えるためのコールバック
             self.ready_callback = None
         
-            # 表示のみモードの場合はダミートークンを使用
+            # Twitch は読み取りだけでも認証が必要なため、
+            # 表示のみモードでもトークンを使う
+            # （以前はダミートークンを渡していたが、必ず認証エラーになっていた）
             oauth_token = config.get("trans_oauth", "")
-            if config.get("view_only_mode", False) and not oauth_token:
-                oauth_token = "oauth:dummy_token_for_view_only_mode"
             
             # OAuthトークンの形式確認
             if oauth_token and not oauth_token.startswith("oauth:"):
@@ -559,9 +559,10 @@ class ChatMonitor:
             if not self.config.get("twitch_channel"):
                 return False, "Twitchチャンネル名が設定されていません"
 
-            # 表示のみモードでない場合はOAuthトークンも必要
-            if not self.config.get("view_only_mode", False) and not self.config.get("trans_oauth"):
-                return False, "OAuthトークンが設定されていません。設定画面で入力してください。"
+            # 読み取りだけでも Twitch の認証が必要
+            if not self.config.get("trans_oauth"):
+                return False, ("OAuthトークンが設定されていません。設定画面で入力してください。\n"
+                               "（チャットを表示するだけの場合もトークンが必要です）")
 
             # 非同期でボット起動（v0.2.0_Betaと同じシンプルな方式に戻す）
             task = asyncio.create_task(self.bot.start())
@@ -599,7 +600,8 @@ class ChatMonitor:
         except asyncio.TimeoutError:
             print("ボットの終了を待てませんでした（処理は継続します）")
         except Exception as e:
-            print(f"監視停止エラー: {e}")
+            # 既に切断済みの場合など、終了処理側で軽微な例外が出ることがある
+            print(f"ボット終了時の後始末: {type(e).__name__}: {e}")
         finally:
             self.is_running = False
             print("チャット監視停止処理完了")

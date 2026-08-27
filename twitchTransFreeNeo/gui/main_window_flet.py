@@ -1053,8 +1053,9 @@ class MainWindow:
         if platform in ["twitch", "both"]:
             if not config.get("twitch_channel"):
                 errors.append("Twitchチャンネル名が設定されていません")
-            if not config.get("trans_oauth") and not config.get("view_only_mode", False):
-                errors.append("OAuthトークンが設定されていません（表示のみモードでない場合）")
+            if not config.get("trans_oauth"):
+                errors.append("OAuthトークンが設定されていません\n"
+                              "（Twitch はチャットを読むだけでも認証が必要です）")
 
         if platform in ["youtube", "both"]:
             if not config.get("youtube_video_id"):

@@ -502,6 +502,8 @@ class SettingsDialog:
         self.view_only_checkbox = ft.Checkbox(
             label="表示のみモード（チャットに投稿しない）",
             value=self.config.get("view_only_mode", False),
+            tooltip="翻訳結果をこの画面に表示するだけで、チャットには書き込みません。"
+                    "なお Twitch はチャットを読むだけでも OAuth トークンが必要です",
         )
 
         misc_card = self._create_settings_card(
