@@ -136,6 +136,7 @@ class ConfigManager:
             "tts_read_content": True,
             "tts_read_lang": False,
             "tts_kind": "gTTS",  # gTTS, CeVIO
+            "tts_speed": 1.0,    # 読み上げ速度（0.5〜2.0、1.0で等速）
             "cevio_cast": "さとうささら",
             "tts_text_max_length": 50,
             "tts_message_for_omitting": "",
@@ -200,6 +201,16 @@ class ConfigManager:
     def _validate_and_fix_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """設定値を検証し、無効な値を修正（旧バージョン互換性）"""
         # フォントサイズの範囲チェック (10-24)
+        if "tts_speed" in config:
+            try:
+                speed = float(config["tts_speed"])
+            except (TypeError, ValueError):
+                speed = 1.0
+            if not (0.5 <= speed <= 2.0):
+                speed = min(max(speed, 0.5), 2.0)
+                print(f"読み上げ速度を有効範囲に補正しました（{config['tts_speed']} → {speed}）")
+            config["tts_speed"] = speed
+
         if "font_size" in config:
             font_size = config["font_size"]
             if not isinstance(font_size, (int, float)) or font_size < 10:

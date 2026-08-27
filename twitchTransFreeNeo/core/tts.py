@@ -170,6 +170,47 @@ class TTSEngine:
             return lang.split('-')[0]
         return lang
 
+    # 読み上げ速度の下限・上限（これ以上は聞き取りにくくなる）
+    MIN_SPEED, MAX_SPEED = 0.5, 2.0
+    _ffmpeg_checked = False
+    _ffmpeg_path = None
+    _speed_warned = False
+
+    def playback_speed(self) -> float:
+        """設定された読み上げ速度（1.0＝等速）"""
+        try:
+            speed = float(self.config.get("tts_speed", 1.0))
+        except (TypeError, ValueError):
+            speed = 1.0
+        return max(self.MIN_SPEED, min(speed, self.MAX_SPEED))
+
+    @classmethod
+    def _find_ffmpeg(cls) -> Optional[str]:
+        """ffmpeg の場所を一度だけ調べる（無ければ None）"""
+        if not cls._ffmpeg_checked:
+            import shutil
+            cls._ffmpeg_path = shutil.which("ffmpeg")
+            cls._ffmpeg_checked = True
+        return cls._ffmpeg_path
+
+    def _apply_speed_with_ffmpeg(self, tts_file: str, speed: float) -> Optional[str]:
+        """ffmpeg で再生速度を変える（音の高さは変えない）"""
+        ffmpeg = self._find_ffmpeg()
+        if not ffmpeg:
+            return None
+        out_file = f"{os.path.splitext(tts_file)[0]}_x{speed:.2f}.mp3"
+        try:
+            result = subprocess.run(
+                [ffmpeg, "-y", "-loglevel", "error", "-i", tts_file,
+                 "-filter:a", f"atempo={speed:.3f}", "-vn", out_file],
+                capture_output=True, timeout=30,
+            )
+            if result.returncode == 0 and os.path.exists(out_file) and os.path.getsize(out_file) > 0:
+                return out_file
+        except Exception as e:
+            print(f"TTS speed error: {e}")
+        return None
+
     def _synthesize_audio(self, text: str, lang: str) -> Optional[str]:
         """gTTSで音声ファイルを生成"""
         gtts_lang = self._to_gtts_lang(lang)
@@ -195,38 +236,56 @@ class TTSEngine:
 
     def _play_audio(self, tts_file: str) -> bool:
         """プラットフォーム別に音声を再生"""
-        # macOS: afplayを優先
+        speed = self.playback_speed()
+
+        # macOS: afplay が速度指定に対応しているのでそのまま渡す
         if IS_MACOS:
-            if self._play_with_afplay(tts_file):
+            if self._play_with_afplay(tts_file, speed):
                 return True
 
-        # pygame（クロスプラットフォーム）
-        if PYGAME_AVAILABLE:
-            if self._play_with_pygame(tts_file):
-                return True
+        # 他の環境では ffmpeg があれば事前に速度を変えておく
+        converted = None
+        if abs(speed - 1.0) > 0.01:
+            converted = self._apply_speed_with_ffmpeg(tts_file, speed)
+            if converted:
+                tts_file = converted
+            elif not TTSEngine._speed_warned:
+                TTSEngine._speed_warned = True
+                print("TTS: 読み上げ速度の変更には ffmpeg が必要です（等速で再生します）")
 
-        # Windows: winsound
-        if IS_WINDOWS:
-            if self._play_on_windows(tts_file):
-                return True
+        try:
+            # pygame（クロスプラットフォーム）
+            if PYGAME_AVAILABLE:
+                if self._play_with_pygame(tts_file):
+                    return True
 
-        # Linux: aplay/paplay
-        if IS_LINUX:
-            if self._play_on_linux(tts_file):
-                return True
+            # Windows: winsound
+            if IS_WINDOWS:
+                if self._play_on_windows(tts_file):
+                    return True
 
-        print('TTS error: All playback methods failed')
-        return False
+            # Linux: aplay/paplay
+            if IS_LINUX:
+                if self._play_on_linux(tts_file):
+                    return True
 
-    def _play_with_afplay(self, tts_file: str) -> bool:
-        """macOSのafplayで再生"""
+            print('TTS error: All playback methods failed')
+            return False
+        finally:
+            # 速度変換で作った一時ファイルを片付ける
+            if converted:
+                self._cleanup_file(converted)
+
+    def _play_with_afplay(self, tts_file: str, speed: float = 1.0) -> bool:
+        """macOSのafplayで再生（-r で読み上げ速度を指定できる）"""
         try:
             abs_path = os.path.abspath(tts_file)
-            result = subprocess.run(
-                ['afplay', abs_path],
-                capture_output=True,
-                timeout=30
-            )
+            args = ['afplay']
+            if abs(speed - 1.0) > 0.01:
+                # -q 1 は速度変更時の品質を上げる指定
+                args += ['-r', f'{speed:.2f}', '-q', '1']
+            args.append(abs_path)
+            result = subprocess.run(args, capture_output=True, timeout=60)
             return result.returncode == 0
         except Exception:
             return False
