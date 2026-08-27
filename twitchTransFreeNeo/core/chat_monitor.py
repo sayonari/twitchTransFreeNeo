@@ -467,24 +467,17 @@ if TWITCHIO_AVAILABLE:
             await ctx.send(f'twitchTFNeo v{__version__} by さあたん / 西村良太')
     
         def stop_bot(self):
-            """ボット停止"""
+            """ボットの受信処理を止める（接続の後始末は close() 側に任せる）
+
+            以前は close() をタスク化した直後に TwitchIO の内部属性
+            (_ws / _connection) を None にしていたため、終了処理そのものが
+            壊れてソケットが残ることがあった
+            """
             self.is_running = False
 
             # TTSエンジンを停止
             if hasattr(self, 'tts_engine'):
                 self.tts_engine.stop()
-
-            # イベントループが実行中の場合のみ非同期クローズを試行
-            try:
-                loop = asyncio.get_running_loop()
-                if hasattr(self, 'close'):
-                    asyncio.create_task(self.close())
-            except RuntimeError:
-                pass  # イベントループが実行されていない場合はスキップ
-
-            # 内部状態をクリア
-            self._ws = None
-            self._connection = None
 
 class ChatMonitor:
     """チャット監視統合クラス"""
@@ -583,26 +576,59 @@ class ChatMonitor:
             traceback.print_exc()
             return False, error_msg
     
-    def stop(self):
-        """監視停止"""
+    async def stop_async(self, timeout: float = 5.0):
+        """監視停止（接続の終了まで待つ）
+
+        同期版のように time.sleep でイベントループを止めると
+        画面が固まるうえ、終了処理が中途半端になるため、
+        こちらを既定の停止手段とする
+        """
+        print("チャット監視停止処理を開始...")
+        self.is_running = False
+        bot = self.bot
+        self.bot = None
+
+        if bot is None:
+            print("チャット監視停止処理完了")
+            return
+
         try:
-            print("チャット監視停止処理を開始...")
-            self.is_running = False
-            if self.bot:
-                print("ボット停止中...")
-                self.bot.stop_bot()
-                # 確実にボットを停止させるため少し待機
-                import time
-                time.sleep(0.8)
-                self.bot = None
-                print("ボット停止完了")
+            bot.stop_bot()
+            await asyncio.wait_for(bot.close(), timeout=timeout)
+            print("ボット停止完了")
+        except asyncio.TimeoutError:
+            print("ボットの終了を待てませんでした（処理は継続します）")
         except Exception as e:
             print(f"監視停止エラー: {e}")
-            # エラーが発生してもボットオブジェクトはクリア
-            self.bot = None
         finally:
             self.is_running = False
             print("チャット監視停止処理完了")
+
+    def stop(self):
+        """監視停止（同期呼び出し用）
+
+        イベントループが動いていれば stop_async に委ねる
+        """
+        self.is_running = False
+        bot = self.bot
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop is not None:
+            loop.create_task(self.stop_async())
+            return
+
+        # ループが無い状況（アプリ終了時など）は最低限の後始末だけ行う
+        self.bot = None
+        if bot is not None:
+            try:
+                bot.stop_bot()
+            except Exception as e:
+                print(f"監視停止エラー: {e}")
+        print("チャット監視停止処理完了")
     
     def update_config(self, new_config: Dict[str, Any]):
         """設定更新"""

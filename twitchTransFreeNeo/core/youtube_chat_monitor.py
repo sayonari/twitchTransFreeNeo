@@ -48,11 +48,13 @@ class YouTubeChatMonitor:
 
     def __init__(self, config: Dict[str, Any], message_callback: Callable[[ChatMessage], None],
                  log_callback: Optional[Callable[[str], None]] = None,
-                 quota_callback: Optional[Callable[[int, int], None]] = None):
+                 quota_callback: Optional[Callable[[int, int], None]] = None,
+                 disconnected_callback: Optional[Callable[[str], None]] = None):
         self.config = config
         self.message_callback = message_callback
         self.log_callback = log_callback
         self.quota_callback = quota_callback  # (used, limit) で呼ばれる
+        self.disconnected_callback = disconnected_callback  # 監視が止まった理由を通知
         self.processor = MessageProcessor(config)
         self.translator = TranslationEngine(config)
         self.language_detector = LanguageDetector(config)
@@ -197,22 +199,46 @@ class YouTubeChatMonitor:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
+        # 連続でエラーが起きたときに待ち時間を伸ばす（CPUとログの浪費を防ぐ）
+        backoff = 1.0
+        MAX_BACKOFF = 30.0
+        ended_reason = ""
+
         try:
-            while self.is_running and self.chat and self.chat.is_alive():
+            while self.is_running:
+                if not self.chat or not self.chat.is_alive():
+                    ended_reason = "配信が終了したか、チャットを取得できなくなりました"
+                    break
                 try:
                     for c in self.chat.get().sync_items():
                         if not self.is_running:
                             break
                         # 非同期処理をループで実行
                         loop.run_until_complete(self._process_message(c))
+                    backoff = 1.0  # 正常に回れたら待ち時間を戻す
                 except Exception as e:
-                    if self.is_running:
-                        print(f"[ERROR] YouTube チャットメッセージ処理エラー: {e}")
+                    if not self.is_running:
+                        break
+                    self._log(f"[ERROR] YouTube チャットメッセージ処理エラー: {e}")
+                    time.sleep(backoff)
+                    backoff = min(backoff * 2, MAX_BACKOFF)
         except Exception as e:
+            ended_reason = f"監視ループが異常終了しました: {e}"
             print(f"[ERROR] YouTube監視ループエラー: {e}")
         finally:
             loop.close()
+            # 監視が止まったことを必ず通知する
+            # （以前は停止しても「接続中」の表示が残ったままだった）
+            was_running = self.is_running
+            self.is_running = False
             print("[INFO] YouTube監視ループが終了しました")
+            if was_running and ended_reason:
+                self._log(f"[WARNING] YouTube: {ended_reason}")
+                if self.disconnected_callback:
+                    try:
+                        self.disconnected_callback(ended_reason)
+                    except Exception as e:
+                        print(f"disconnected_callback エラー: {e}")
 
     async def _process_message(self, chat_item):
         """メッセージ処理"""

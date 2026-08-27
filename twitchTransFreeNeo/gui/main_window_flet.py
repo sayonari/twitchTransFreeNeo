@@ -33,6 +33,8 @@ class MainWindow:
         self.chat_monitor: Optional[ChatMonitor] = None
         self.youtube_monitor: Optional[YouTubeChatMonitor] = None
         self.is_connected = False
+        # 接続・切断の処理中フラグ（ボタン連打による二重起動を防ぐ）
+        self._connection_busy = False
         self.page: Optional[ft.Page] = None
 
         # UI要素の参照
@@ -776,14 +778,47 @@ class MainWindow:
 
     def _toggle_connection(self, e):
         """接続切り替え"""
+        # 処理中の連打で二重に接続されないようにする
+        if self._connection_busy:
+            self._log_message("接続処理の途中です。しばらくお待ちください")
+            return
+
         self._log_message("接続ボタンが押されました")
         if self.is_connected:
             self.page.run_task(self._disconnect)
         else:
             self.page.run_task(self._connect)
 
+    def _set_connection_busy(self, busy: bool, label: str = None):
+        """接続処理中はボタンを押せなくする"""
+        self._connection_busy = busy
+        if self.connect_button:
+            self.connect_button.disabled = busy
+            if label:
+                self.connect_button.text = label
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
     async def _connect(self):
         """接続開始"""
+        if self._connection_busy:
+            return
+        self._set_connection_busy(True, "接続中...")
+        try:
+            await self._connect_impl()
+        finally:
+            self._set_connection_busy(False)
+            if self.connect_button:
+                self.connect_button.text = "接続停止" if self.is_connected else "接続開始"
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
+
+    async def _connect_impl(self):
+        """接続処理の本体"""
         config = self.config_manager.get_all()
         platform = config.get("platform", "twitch")
 
@@ -841,6 +876,7 @@ class MainWindow:
                         config, self._on_message_received,
                         log_callback=self._log_message,
                         quota_callback=self._on_youtube_quota_update,
+                        disconnected_callback=self._on_youtube_disconnected,
                     )
                     if self.youtube_monitor.start():
                         video_id = config.get("youtube_video_id", "")
@@ -898,6 +934,49 @@ class MainWindow:
             elif "timeout" in error_str.lower():
                 hint = "接続がタイムアウトしました。しばらく待ってから再試行してください。"
             await self._show_error_dialog("接続エラー", f"接続中にエラーが発生しました:\n{e}", hint=hint)
+
+    def _on_youtube_disconnected(self, reason: str):
+        """YouTube の監視が止まったときの処理"""
+        config = self.config_manager.get_all()
+        platform = config.get("platform", "twitch")
+
+        # both 構成で Twitch 側が生きていれば接続状態は保つ
+        twitch_alive = platform == "both" and self.chat_monitor is not None
+        if twitch_alive:
+            if self.youtube_status_icon:
+                self.youtube_status_icon.visible = False
+            try:
+                self.page.update()
+            except Exception:
+                pass
+            return
+
+        if not self.is_connected:
+            return
+
+        self.is_connected = False
+        self.youtube_monitor = None
+
+        if self.connect_button:
+            self.connect_button.text = "接続開始"
+            self.connect_button.icon = ft.Icons.PLAY_ARROW
+        if self.status_text:
+            self.status_text.value = "未接続（配信の終了を検出しました）"
+            self.status_text.color = ft.Colors.RED
+        if self.status_icon:
+            self.status_icon.color = ft.Colors.RED
+
+        self._connection_timer_running = False
+        self.connection_start_time = None
+        if self.connection_time_text:
+            self.connection_time_text.value = "--:--:--"
+        if self.youtube_status_icon:
+            self.youtube_status_icon.visible = False
+
+        try:
+            self.page.update()
+        except Exception:
+            pass
 
     def _on_twitch_disconnected(self, reason: str):
         """Twitch 接続が失敗・切断されたときの処理
@@ -1005,10 +1084,13 @@ class MainWindow:
 
     async def _disconnect(self):
         """接続停止"""
+        if self._connection_busy:
+            return
+        self._set_connection_busy(True, "停止中...")
         try:
-            # Twitchモニターを停止
+            # Twitchモニターを停止（終了まで待つ）
             if self.chat_monitor:
-                self.chat_monitor.stop()
+                await self.chat_monitor.stop_async()
                 self.chat_monitor = None
 
             # YouTubeモニターを停止
@@ -1048,6 +1130,14 @@ class MainWindow:
 
         except Exception as e:
             self._log_message(f"切断エラー: {e}")
+        finally:
+            self._set_connection_busy(False)
+            if self.connect_button:
+                self.connect_button.text = "接続開始"
+                try:
+                    self.page.update()
+                except Exception:
+                    pass
 
     def _on_message_received(self, message: ChatMessage):
         """メッセージ受信時のコールバック"""

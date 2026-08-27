@@ -35,11 +35,18 @@ class TTSEngine:
     必要な加工を施した上で適切なタイミングで読み上げる
     """
 
+    # 読み上げ待ちの上限（配信が盛り上がるとコメントが殺到するため）
+    MAX_QUEUE_SIZE = 50
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.synth_queue = queue.Queue()
+        # 上限つきキュー: あふれた場合は古い順に捨てる
+        # （無制限だと大量コメント時に読み上げが延々と遅れて溜まり続ける）
+        self.synth_queue: queue.Queue = queue.Queue(maxsize=self.MAX_QUEUE_SIZE)
         self.is_running = False
         self.thread_voice: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+        self._dropped = 0
         self.tmp_dir = self._setup_tmp_dir()
 
     def _setup_tmp_dir(self) -> str:
@@ -67,9 +74,24 @@ class TTSEngine:
         return tmp_dir
 
     def put(self, text: str, lang: str):
-        """TTS読み上げキューに追加"""
-        if self.is_enabled():
-            self.synth_queue.put([text, lang])
+        """TTS読み上げキューに追加（あふれたら古いものから捨てる）"""
+        if not self.is_enabled():
+            return
+        try:
+            self.synth_queue.put_nowait([text, lang])
+        except queue.Full:
+            # 読み上げが追いつかない状況では、古い発言より新しい発言を優先する
+            try:
+                self.synth_queue.get_nowait()
+                self._dropped += 1
+                if self._dropped in (1, 10, 100) or self._dropped % 500 == 0:
+                    print(f"TTS: 読み上げが追いつかないため古い発言を省略しています（累計{self._dropped}件）")
+            except queue.Empty:
+                pass
+            try:
+                self.synth_queue.put_nowait([text, lang])
+            except queue.Full:
+                pass
 
     def is_enabled(self) -> bool:
         """TTSが有効かどうかをチェック"""
@@ -78,18 +100,40 @@ class TTSEngine:
     def start(self):
         """TTSスレッドを開始"""
         if self.is_enabled() and not self.is_running:
+            self._stop_event.clear()
             self.is_running = True
             self.thread_voice = threading.Thread(target=self.voice_synth, daemon=True)
             self.thread_voice.start()
 
-    def stop(self):
-        """TTSスレッドを停止"""
-        if self.is_running:
-            self.is_running = False
-            # 未読み上げのメッセージを破棄する
-            # （残したままだと次回開始時に古い発言が読み上げられる）
-            self._drain_queue()
-            self.synth_queue.put(None)  # 停止シグナル
+    def stop(self, timeout: float = 3.0):
+        """TTSスレッドを停止（終了を待ってから戻る）"""
+        if not self.is_running:
+            return
+
+        self.is_running = False
+        self._stop_event.set()
+        # 未読み上げのメッセージを破棄する
+        # （残したままだと次回開始時に古い発言が読み上げられる）
+        self._drain_queue()
+        try:
+            self.synth_queue.put_nowait(None)  # 停止シグナル
+        except queue.Full:
+            pass
+
+        # 再生中の音があれば止める
+        if PYGAME_AVAILABLE:
+            try:
+                if pygame.mixer.get_init():
+                    pygame.mixer.stop()
+            except Exception:
+                pass
+
+        thread = self.thread_voice
+        if thread and thread.is_alive():
+            thread.join(timeout=timeout)
+            if thread.is_alive():
+                print("TTS: 読み上げスレッドの終了を待てませんでした（処理は継続します）")
+        self.thread_voice = None
 
     def _drain_queue(self):
         """読み上げ待ちキューを空にする"""
@@ -175,6 +219,7 @@ class TTSEngine:
     # （それ以上も明瞭に再生できるが，実用的な範囲で頭打ちにする）
     MIN_SPEED, MAX_SPEED = 0.5, 2.5
     DEFAULT_SPEED = 1.4       # gTTS の読み上げは遅いため、既定を少し速めにする
+    NETWORK_TIMEOUT = 15      # 音声合成の通信タイムアウト（秒）
     # 長文を自動で速める際の基準
     AUTO_SPEED_FROM = 30      # この文字数までは基準速度のまま
     AUTO_SPEED_FULL = 90      # この文字数で加速が最大になる
@@ -263,7 +308,8 @@ class TTSEngine:
         """gTTSで音声ファイルを生成"""
         gtts_lang = self._to_gtts_lang(lang)
         try:
-            tts = gTTS(text, lang=gtts_lang)
+            # timeout を指定しないと通信不良のときに待ち続けてしまう
+            tts = gTTS(text, lang=gtts_lang, timeout=self.NETWORK_TIMEOUT)
         except Exception as e:
             # 未対応言語などはここで弾かれる。読み上げを諦めて次へ進む
             print(f"TTS error: 言語 '{lang}' (gTTS: '{gtts_lang}') は読み上げできません: {e}")
@@ -329,6 +375,9 @@ class TTSEngine:
 
             sound.play()
             while pygame.mixer.get_busy():
+                if self._stop_event.is_set():
+                    pygame.mixer.stop()
+                    break
                 time.sleep(0.05)
             return True
         except Exception as e:
@@ -359,6 +408,9 @@ class TTSEngine:
             pygame.mixer.music.play()
 
             while pygame.mixer.music.get_busy():
+                if self._stop_event.is_set():
+                    pygame.mixer.music.stop()
+                    break
                 time.sleep(0.1)
 
             pygame.mixer.quit()
@@ -409,7 +461,7 @@ class TTSEngine:
         """音声合成(TTS)の待ち受けスレッド"""
         tts_func = self.determine_tts()
 
-        while self.is_running:
+        while self.is_running and not self._stop_event.is_set():
             try:
                 q = self.synth_queue.get(timeout=1)
                 if q is None:  # 停止シグナル
