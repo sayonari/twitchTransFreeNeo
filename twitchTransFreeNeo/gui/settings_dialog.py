@@ -141,6 +141,19 @@ class SettingsDialog:
             elevation=1,
         )
 
+    def _current_window_size(self):
+        """現在のウィンドウサイズ（取れなければ設定値）"""
+        try:
+            w = int(getattr(self.page.window, "width", 0) or 0)
+            h = int(getattr(self.page.window, "height", 0) or 0)
+        except (TypeError, ValueError):
+            w = h = 0
+        if w <= 0:
+            w = int(self.config.get("window_width", 1200))
+        if h <= 0:
+            h = int(self.config.get("window_height", 800))
+        return w, h
+
     def _dialog_width(self) -> int:
         """設定ダイアログの幅（ウィンドウ幅に追従させる）"""
         page_w = getattr(self.page, "width", None) or 1200
@@ -986,13 +999,13 @@ class SettingsDialog:
             ft.Column([
                 font_size_text,
                 self.font_size_slider,
-                ft.Text("変更は再起動後に完全に反映されます", size=11, color=ft.Colors.GREY_600),
+                ft.Text("「適用」または「OK」ですぐに反映されます", size=11, color=ft.Colors.GREY_600),
             ], spacing=4),
         )
 
         self.window_width_field = ft.TextField(
             label="ウィンドウ幅",
-            value=str(self.config.get("window_width", 1200)),
+            value=str(self._current_window_size()[0]),
             keyboard_type=ft.KeyboardType.NUMBER,
             suffix_text="px",
             width=150,
@@ -1000,7 +1013,7 @@ class SettingsDialog:
 
         self.window_height_field = ft.TextField(
             label="ウィンドウ高さ",
-            value=str(self.config.get("window_height", 800)),
+            value=str(self._current_window_size()[1]),
             keyboard_type=ft.KeyboardType.NUMBER,
             suffix_text="px",
             width=150,
@@ -1012,7 +1025,7 @@ class SettingsDialog:
             ft.Column([
                 ft.Row([self.window_width_field, self.window_height_field], spacing=12),
                 ft.Text("推奨: 幅 800-1920、高さ 600-1080", size=11, color=ft.Colors.GREY_600),
-                ft.Text("変更は再起動後に反映されます", size=11, color=ft.Colors.GREY_600),
+                ft.Text("「適用」または「OK」ですぐに反映されます", size=11, color=ft.Colors.GREY_600),
             ], spacing=4),
         )
 
@@ -1087,7 +1100,7 @@ class SettingsDialog:
             ft.Column([
                 self.accent_color_dropdown,
                 ft.Text("アクセントカラーを変更します", size=11, color=ft.Colors.GREY_600),
-                ft.Text("変更は再起動後に反映されます", size=11, color=ft.Colors.GREY_600),
+                ft.Text("「適用」または「OK」ですぐに反映されます", size=11, color=ft.Colors.GREY_600),
             ], spacing=4),
         )
 

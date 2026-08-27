@@ -178,6 +178,9 @@ class MainWindow:
         # チャットが空のあいだは使い方の案内を出しておく
         self._refresh_empty_hint()
 
+        # 保存されているアクセントカラーを反映する
+        self._apply_accent_color(self.config_manager.get("accent_color", "blue"))
+
     def _create_toolbar(self) -> ft.Container:
         """ツールバー作成"""
         config = self.config_manager.get_all()
@@ -1129,6 +1132,14 @@ class MainWindow:
 
     EMPTY_HINT_KEY = "empty_hint"
 
+    def _font_size(self) -> int:
+        """チャット表示に使う文字サイズ（設定値）"""
+        try:
+            size = int(self.config_manager.get("font_size", 13))
+        except (TypeError, ValueError):
+            size = 13
+        return max(10, min(size, 24))
+
     def _create_empty_hint(self) -> ft.Container:
         """チャットが1件も無いときの案内"""
         if self.is_connected:
@@ -1280,7 +1291,7 @@ class MainWindow:
         header_row.controls.extend([
             ft.Text(
                 f"{message.user}:",
-                size=13,
+                size=self._font_size(),
                 weight=ft.FontWeight.BOLD,
                 color=username_color,
             ),
@@ -1293,9 +1304,10 @@ class MainWindow:
             actions,
         ])
 
+        font_size = self._font_size()
         content = ft.Column([
             header_row,
-            ft.Text(message.text, size=13, selectable=True),
+            ft.Text(message.text, size=font_size, selectable=True),
         ], spacing=1, tight=True)
 
         # 翻訳がある場合（毎行のアイコンはやめ，色と縦線で原文と区別する）
@@ -1306,7 +1318,7 @@ class MainWindow:
                                  border_radius=2, margin=ft.margin.only(top=2)),
                     ft.Text(
                         message.translation,
-                        size=13,
+                        size=font_size,
                         color=ft.Colors.BLUE_700,
                         selectable=True,
                         expand=True,
@@ -1599,6 +1611,7 @@ class MainWindow:
 
             # UIを更新
             self._update_ui_from_config()
+            self._apply_appearance_settings()
 
             self._log_message("設定が更新されました")
 
@@ -1609,6 +1622,58 @@ class MainWindow:
 
         except Exception as e:
             self._log_message(f"設定変更エラー: {e}")
+
+    def _apply_appearance_settings(self):
+        """ウィンドウサイズと文字サイズを即座に反映する
+
+        以前は再起動しないと反映されず（文字サイズに至っては
+        どこにも適用されていなかった）
+        """
+        config = self.config_manager.get_all()
+
+        # ウィンドウサイズ
+        try:
+            width = int(config.get("window_width", 0) or 0)
+            height = int(config.get("window_height", 0) or 0)
+            if width > 0 and height > 0:
+                self.page.window.width = width
+                self.page.window.height = height
+        except (TypeError, ValueError):
+            pass
+
+        # アクセントカラー
+        self._apply_accent_color(config.get("accent_color", "blue"))
+
+        # 文字サイズ（表示中のメッセージを作り直して反映）
+        try:
+            self._update_chat_display()
+        except Exception as e:
+            self._log_message(f"表示の更新に失敗しました: {e}")
+
+        try:
+            self.page.update()
+        except Exception:
+            pass
+
+    ACCENT_COLORS = {
+        "blue": ft.Colors.BLUE,
+        "purple": ft.Colors.PURPLE,
+        "green": ft.Colors.GREEN,
+        "orange": ft.Colors.ORANGE,
+        "red": ft.Colors.RED,
+        "teal": ft.Colors.TEAL,
+    }
+
+    def _apply_accent_color(self, name: str):
+        """アクセントカラーを反映する（設定にあるだけで未適用だった）"""
+        seed = self.ACCENT_COLORS.get(str(name).lower())
+        if not seed:
+            return
+        try:
+            self.page.theme = ft.Theme(color_scheme_seed=seed)
+            self.page.dark_theme = ft.Theme(color_scheme_seed=seed)
+        except Exception as e:
+            print(f"アクセントカラーの適用に失敗しました: {e}")
 
     async def _restart_connection(self):
         """接続を再起動"""
