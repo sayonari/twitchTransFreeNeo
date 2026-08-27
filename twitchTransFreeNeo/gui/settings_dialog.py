@@ -141,17 +141,15 @@ class SettingsDialog:
             elevation=1,
         )
 
-    def _create_scroll_hint(self) -> ft.Container:
-        """スクロールヒントを作成"""
-        return ft.Container(
-            content=ft.Row([
-                ft.Icon(ft.Icons.KEYBOARD_ARROW_DOWN, size=14, color=ft.Colors.GREY_500),
-                ft.Text("↓ 下にスクロールで続きます", size=11, color=ft.Colors.GREY_500),
-            ], alignment=ft.MainAxisAlignment.CENTER),
-            padding=ft.padding.only(top=4, bottom=4),
-            bgcolor=ft.Colors.with_opacity(0.05, ft.Colors.PRIMARY),
-            border_radius=4,
-        )
+    def _dialog_width(self) -> int:
+        """設定ダイアログの幅（ウィンドウ幅に追従させる）"""
+        page_w = getattr(self.page, "width", None) or 1200
+        return int(min(max(page_w - 240, 640), 1040))
+
+    def _dialog_height(self) -> int:
+        """設定ダイアログの高さ（ウィンドウ高さに追従させる）"""
+        page_h = getattr(self.page, "height", None) or 800
+        return int(min(max(page_h - 230, 420), 900))
 
     def show(self):
         """設定ダイアログを表示"""
@@ -208,8 +206,10 @@ class SettingsDialog:
                 ], spacing=8),
                 content=ft.Container(
                     content=self.tabs,
-                    width=720,
-                    height=520,
+                    # ウィンドウの大きさに合わせて設定画面を広く使う
+                    # （固定値だと大きな画面でも中身だけ狭いままになる）
+                    width=self._dialog_width(),
+                    height=self._dialog_height(),
                 ),
                 actions=[
                     ft.TextButton("キャンセル", on_click=self._cancel),
@@ -299,10 +299,12 @@ class SettingsDialog:
                 "Twitch接続設定",
                 ft.Icons.LINK,
                 ft.Column([
-                    self.channel_field,
-                    self.username_field,
-                    self.oauth_field,
-                    oauth_button,
+                    # 幅に余裕があれば横に並び，狭ければ折り返す
+                    ft.Row([self.channel_field, self.username_field],
+                           wrap=True, spacing=8, run_spacing=8),
+                    ft.Row([self.oauth_field, oauth_button],
+                           wrap=True, spacing=8, run_spacing=8,
+                           vertical_alignment=ft.CrossAxisAlignment.CENTER),
                 ], spacing=8),
                 helper_text="チャンネルに接続するために必要な設定です"
             ),
@@ -501,7 +503,6 @@ class SettingsDialog:
 
         return ft.Container(
             content=ft.Column([
-                self._create_scroll_hint(),
                 platform_card,
                 self.twitch_container,
                 self.youtube_container,
@@ -712,7 +713,6 @@ class SettingsDialog:
 
         return ft.Container(
             content=ft.Column([
-                self._create_scroll_hint(),
                 preset_card,
                 lang_card,
                 engine_card,
@@ -767,10 +767,11 @@ class SettingsDialog:
         filter_basic_card = self._create_settings_card(
             "基本フィルター",
             ft.Icons.BLOCK,
-            ft.Column([
+            ft.Row([
                 self.ignore_lang_field,
                 self.ignore_user_field,
-            ], spacing=8),
+            ], wrap=True, spacing=8, run_spacing=8,
+               vertical_alignment=ft.CrossAxisAlignment.START),
             helper_text="特定の言語やユーザーを翻訳対象外にする"
         )
 
@@ -807,17 +808,17 @@ class SettingsDialog:
         filter_advanced_card = self._create_settings_card(
             "詳細フィルター",
             ft.Icons.TUNE,
-            ft.Column([
+            ft.Row([
                 self.ignore_line_field,
                 self.delete_words_field,
                 self.ignore_www_field,
-            ], spacing=8),
+            ], wrap=True, spacing=8, run_spacing=8,
+               vertical_alignment=ft.CrossAxisAlignment.START),
             helper_text="翻訳を改善するための細かい設定"
         )
 
         return ft.Container(
             content=ft.Column([
-                self._create_scroll_hint(),
                 filter_basic_card,
                 filter_advanced_card,
                 ft.Container(
@@ -914,10 +915,12 @@ class SettingsDialog:
         )
 
         self.tts_max_length_field = ft.TextField(
-            label="最大文字数（0=無制限）",
+            label="最大文字数",
             value=str(self.config.get("tts_text_max_length", 50)),
+            hint_text="0で無制限",
+            helper_text="0で無制限",
             keyboard_type=ft.KeyboardType.NUMBER,
-            width=150,
+            width=170,
         )
 
         self.tts_omit_message_field = ft.TextField(
@@ -952,7 +955,6 @@ class SettingsDialog:
 
         return ft.Container(
             content=ft.Column([
-                self._create_scroll_hint(),
                 tts_main_card,
                 tts_what_card,
                 tts_engine_card,
@@ -1091,7 +1093,6 @@ class SettingsDialog:
 
         return ft.Container(
             content=ft.Column([
-                self._create_scroll_hint(),
                 font_card,
                 window_card,
                 quick_card,
