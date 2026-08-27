@@ -138,8 +138,8 @@ class TTSEngine:
             if not tts_file:
                 return
 
-            # 音声再生
-            self._play_audio(tts_file)
+            # 音声再生（長い発言は自動で速める）
+            self._play_audio(tts_file, self.effective_speed(text))
 
         except Exception as e:
             print(f'TTS synthesis error: {e}')
@@ -170,46 +170,94 @@ class TTSEngine:
             return lang.split('-')[0]
         return lang
 
-    # 読み上げ速度の下限・上限（これ以上は聞き取りにくくなる）
-    MIN_SPEED, MAX_SPEED = 0.5, 2.0
-    _ffmpeg_checked = False
-    _ffmpeg_path = None
-    _speed_warned = False
+    # 読み上げ速度の下限・上限
+    # 上限は聞き取りやすさを確認したうえで 2.5 とした
+    # （それ以上も明瞭に再生できるが，実用的な範囲で頭打ちにする）
+    MIN_SPEED, MAX_SPEED = 0.5, 2.5
+    DEFAULT_SPEED = 1.4       # gTTS の読み上げは遅いため、既定を少し速めにする
+    # 長文を自動で速める際の基準
+    AUTO_SPEED_FROM = 30      # この文字数までは基準速度のまま
+    AUTO_SPEED_FULL = 90      # この文字数で加速が最大になる
+    AUTO_SPEED_GAIN = 0.5     # 基準速度の何割増しまで上げるか
 
     def playback_speed(self) -> float:
         """設定された読み上げ速度（1.0＝等速）"""
         try:
-            speed = float(self.config.get("tts_speed", 1.0))
+            speed = float(self.config.get("tts_speed", self.DEFAULT_SPEED))
         except (TypeError, ValueError):
             speed = 1.0
         return max(self.MIN_SPEED, min(speed, self.MAX_SPEED))
 
-    @classmethod
-    def _find_ffmpeg(cls) -> Optional[str]:
-        """ffmpeg の場所を一度だけ調べる（無ければ None）"""
-        if not cls._ffmpeg_checked:
-            import shutil
-            cls._ffmpeg_path = shutil.which("ffmpeg")
-            cls._ffmpeg_checked = True
-        return cls._ffmpeg_path
+    def effective_speed(self, text: str) -> float:
+        """実際に使う速度（長い発言は自動で速める）
 
-    def _apply_speed_with_ffmpeg(self, tts_file: str, speed: float) -> Optional[str]:
-        """ffmpeg で再生速度を変える（音の高さは変えない）"""
-        ffmpeg = self._find_ffmpeg()
-        if not ffmpeg:
-            return None
-        out_file = f"{os.path.splitext(tts_file)[0]}_x{speed:.2f}.mp3"
-        try:
-            result = subprocess.run(
-                [ffmpeg, "-y", "-loglevel", "error", "-i", tts_file,
-                 "-filter:a", f"atempo={speed:.3f}", "-vn", out_file],
-                capture_output=True, timeout=30,
-            )
-            if result.returncode == 0 and os.path.exists(out_file) and os.path.getsize(out_file) > 0:
-                return out_file
-        except Exception as e:
-            print(f"TTS speed error: {e}")
-        return None
+        長文をそのままの速度で読むと読み上げが延々と続き，
+        次のコメントに追いつかなくなるため
+        """
+        base = self.playback_speed()
+        if not self.config.get("tts_auto_speed", True):
+            return base
+
+        length = len(text or "")
+        if length <= self.AUTO_SPEED_FROM:
+            return base
+
+        span = max(self.AUTO_SPEED_FULL - self.AUTO_SPEED_FROM, 1)
+        ratio = min((length - self.AUTO_SPEED_FROM) / span, 1.0)
+        # 基準速度を速めに設定している人でも上限を超えないよう頭打ちにする
+        return min(base * (1.0 + ratio * self.AUTO_SPEED_GAIN), self.MAX_SPEED)
+
+    @staticmethod
+    def _stretch_samples(samples, speed: float):
+        """再生速度だけを変える（音の高さは変えない・WSOLA）
+
+        重ね合わせる位置を相互相関で選ぶことで、継ぎ目の雑音を抑える。
+        追加のソフトを入れなくても動くよう numpy だけで完結させている
+        """
+        import numpy as np
+
+        if abs(speed - 1.0) < 0.01:
+            return samples
+
+        mono = samples.ndim == 1
+        x = (samples[:, None] if mono else samples).astype(np.float32)
+        n, ch = x.shape
+
+        frame = 1024
+        search = 256
+        hop_syn = frame // 2
+        hop_ana = int(round(hop_syn * speed))
+        window = np.hanning(frame).astype(np.float32)[:, None]
+
+        out = np.zeros((int(n / speed) + frame * 2, ch), dtype=np.float32)
+        weight = np.zeros((out.shape[0], 1), dtype=np.float32)
+
+        pos_ana = pos_syn = 0
+        prev_tail = None
+        while pos_ana + frame + search < n and pos_syn + frame < out.shape[0]:
+            if prev_tail is None:
+                best = pos_ana
+            else:
+                lo = max(0, pos_ana - search)
+                hi = min(n - frame, pos_ana + search)
+                ref = prev_tail[:, 0]
+                candidates = np.arange(lo, hi, 32)
+                scores = [
+                    float(np.dot(x[c:c + len(ref), 0], ref))
+                    for c in candidates if c + frame <= n
+                ]
+                best = int(candidates[int(np.argmax(scores))]) if scores else pos_ana
+
+            out[pos_syn:pos_syn + frame] += x[best:best + frame] * window
+            weight[pos_syn:pos_syn + frame] += window
+            prev_tail = x[best + hop_syn:best + hop_syn + hop_syn]
+            pos_ana = best + hop_ana
+            pos_syn += hop_syn
+
+        weight[weight < 1e-6] = 1.0
+        result = np.clip(out / weight, -32768, 32767).astype(np.int16)
+        result = result[:pos_syn + frame]
+        return result[:, 0] if mono else result
 
     def _synthesize_audio(self, text: str, lang: str) -> Optional[str]:
         """gTTSで音声ファイルを生成"""
@@ -234,47 +282,60 @@ class TTSEngine:
             return None
         return tts_file
 
-    def _play_audio(self, tts_file: str) -> bool:
+    def _play_audio(self, tts_file: str, speed: float = 1.0) -> bool:
         """プラットフォーム別に音声を再生"""
-        speed = self.playback_speed()
+        # 速度指定があるときは、まず numpy で作り直して再生する
+        # （追加のソフトを入れなくても全OSで同じように動く）
+        if abs(speed - 1.0) > 0.01 and PYGAME_AVAILABLE:
+            if self._play_stretched(tts_file, speed):
+                return True
 
-        # macOS: afplay が速度指定に対応しているのでそのまま渡す
+        # macOS: afplay（速度指定にも対応している）
         if IS_MACOS:
             if self._play_with_afplay(tts_file, speed):
                 return True
 
-        # 他の環境では ffmpeg があれば事前に速度を変えておく
-        converted = None
-        if abs(speed - 1.0) > 0.01:
-            converted = self._apply_speed_with_ffmpeg(tts_file, speed)
-            if converted:
-                tts_file = converted
-            elif not TTSEngine._speed_warned:
-                TTSEngine._speed_warned = True
-                print("TTS: 読み上げ速度の変更には ffmpeg が必要です（等速で再生します）")
+        # pygame（クロスプラットフォーム）
+        if PYGAME_AVAILABLE:
+            if self._play_with_pygame(tts_file):
+                return True
 
+        # Windows: winsound
+        if IS_WINDOWS:
+            if self._play_on_windows(tts_file):
+                return True
+
+        # Linux: aplay/paplay
+        if IS_LINUX:
+            if self._play_on_linux(tts_file):
+                return True
+
+        print('TTS error: All playback methods failed')
+        return False
+
+    def _play_stretched(self, tts_file: str, speed: float) -> bool:
+        """速度を変えた音声を組み立てて再生する"""
         try:
-            # pygame（クロスプラットフォーム）
-            if PYGAME_AVAILABLE:
-                if self._play_with_pygame(tts_file):
-                    return True
+            import numpy as np
+            import pygame.sndarray
 
-            # Windows: winsound
-            if IS_WINDOWS:
-                if self._play_on_windows(tts_file):
-                    return True
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
 
-            # Linux: aplay/paplay
-            if IS_LINUX:
-                if self._play_on_linux(tts_file):
-                    return True
+            source = pygame.mixer.Sound(tts_file)
+            samples = pygame.sndarray.array(source)
+            stretched = self._stretch_samples(samples, speed)
+            sound = pygame.sndarray.make_sound(np.ascontiguousarray(stretched))
 
-            print('TTS error: All playback methods failed')
+            sound.play()
+            while pygame.mixer.get_busy():
+                time.sleep(0.05)
+            return True
+        except Exception as e:
+            if not TTSEngine._speed_warned:
+                TTSEngine._speed_warned = True
+                print(f"TTS: 速度変更に失敗したため通常速度で再生します: {e}")
             return False
-        finally:
-            # 速度変換で作った一時ファイルを片付ける
-            if converted:
-                self._cleanup_file(converted)
 
     def _play_with_afplay(self, tts_file: str, speed: float = 1.0) -> bool:
         """macOSのafplayで再生（-r で読み上げ速度を指定できる）"""

@@ -136,7 +136,8 @@ class ConfigManager:
             "tts_read_content": True,
             "tts_read_lang": False,
             "tts_kind": "gTTS",  # gTTS, CeVIO
-            "tts_speed": 1.0,    # 読み上げ速度（0.5〜2.0、1.0で等速）
+            "tts_speed": 1.4,        # 読み上げ速度（0.5〜2.5、1.0で等速）
+            "tts_auto_speed": True,  # 長い発言を自動で速く読む
             "cevio_cast": "さとうささら",
             "tts_text_max_length": 50,
             "tts_message_for_omitting": "",
@@ -206,8 +207,8 @@ class ConfigManager:
                 speed = float(config["tts_speed"])
             except (TypeError, ValueError):
                 speed = 1.0
-            if not (0.5 <= speed <= 2.0):
-                speed = min(max(speed, 0.5), 2.0)
+            if not (0.5 <= speed <= 2.5):
+                speed = min(max(speed, 0.5), 2.5)
                 print(f"読み上げ速度を有効範囲に補正しました（{config['tts_speed']} → {speed}）")
             config["tts_speed"] = speed
 

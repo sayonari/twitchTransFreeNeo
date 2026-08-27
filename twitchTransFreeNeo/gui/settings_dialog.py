@@ -929,7 +929,7 @@ class SettingsDialog:
 
         # 読み上げ速度
         self.tts_speed_text = ft.Text(
-            f"読み上げ速度: {float(self.config.get('tts_speed', 1.0)):.1f}倍",
+            f"読み上げ速度: {float(self.config.get('tts_speed', 1.4)):.1f}倍",
             size=13,
         )
 
@@ -938,10 +938,16 @@ class SettingsDialog:
             self.tts_speed_text.update()
 
         self.tts_speed_slider = ft.Slider(
-            min=0.5, max=2.0, divisions=15,
-            value=float(self.config.get("tts_speed", 1.0)),
+            min=0.5, max=2.5, divisions=20,
+            value=float(self.config.get("tts_speed", 1.4)),
             label="{value}倍",
             on_change=on_speed_change,
+        )
+
+        self.tts_auto_speed_checkbox = ft.Checkbox(
+            label="長い発言は自動で速く読む",
+            value=self.config.get("tts_auto_speed", True),
+            tooltip="長いコメントの読み上げが延々と続かないよう、文字数に応じて速度を上げます",
         )
 
         self.tts_max_length_field = ft.TextField(
@@ -968,6 +974,7 @@ class SettingsDialog:
                 ft.Row([self.tts_max_length_field, self.tts_omit_message_field], wrap=True, spacing=12),
                 self.tts_speed_text,
                 self.tts_speed_slider,
+                self.tts_auto_speed_checkbox,
             ], spacing=8),
         )
 
@@ -1211,6 +1218,7 @@ class SettingsDialog:
         updated["tts_read_lang"] = self.tts_read_lang_checkbox.value
         updated["tts_kind"] = self.tts_kind_dropdown.value
         updated["tts_speed"] = round(float(self.tts_speed_slider.value), 2)
+        updated["tts_auto_speed"] = bool(self.tts_auto_speed_checkbox.value)
         updated["cevio_cast"] = self.cevio_cast_field.value
         updated["tts_text_max_length"] = int(self.tts_max_length_field.value) if self.tts_max_length_field.value.isdigit() else 50
         updated["tts_message_for_omitting"] = self.tts_omit_message_field.value
