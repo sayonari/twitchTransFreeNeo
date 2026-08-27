@@ -1025,14 +1025,18 @@ class SettingsDialog:
         except ImportError:
             from twitchTransFreeNeo.core.chat_monitor import ChatMessage
 
-        # プレビュー用のサンプル（外国語→日本語 と 日本語→外国語 の両方）
-        samples = []
+        # プレビュー用のサンプル（外国語→日本語 と 日本語→外国語）
         m1 = ChatMessage("viewer_john", "Your stream is always fun!",
                          datetime.now(), "en", "配信いつも楽しいです！")
         m1.target_lang = "ja"
         m2 = ChatMessage("さぁたん", "ありがとう！", datetime.now(), "ja", "Thank you!")
         m2.target_lang = "en"
-        samples.extend([m1, m2])
+        samples = [m1, m2]
+
+        # 翻訳されなかった発言の例（翻訳文が無い状態）
+        untranslated = ChatMessage("mocha_viewer", "こんばんは〜！今日も見にきたよ",
+                                   datetime.now(), "ja", "")
+        untranslated.target_lang = ""
 
         self.preview_area = ft.Column([], spacing=0, tight=True)
 
@@ -1042,12 +1046,19 @@ class SettingsDialog:
             ("view_show_lang", "言語コード（[en] など）"),
             ("view_show_original", "原文"),
             ("view_show_translation", "翻訳文"),
+            ("view_show_untranslated", "翻訳されなかった発言も表示する"),
         ]
 
         def refresh_preview(e=None):
             options = {k: bool(cb.value) for k, cb in self.view_checkboxes.items()}
             self.preview_area.controls.clear()
-            for msg in samples:
+
+            shown = list(samples)
+            # 「翻訳されなかった発言」は、チェックが入っているときだけ並べる
+            if options.get("view_show_untranslated"):
+                shown.append(untranslated)
+
+            for msg in shown:
                 content = build_message_content(msg, options, font_size=13)
                 self.preview_area.controls.append(build_message_container(content))
             try:
@@ -1058,10 +1069,15 @@ class SettingsDialog:
         self.view_checkboxes = {}
         checkbox_controls = []
         for key, label in labels:
+            tooltip = None
+            if key == "view_show_untranslated":
+                tooltip = ("母語での発言など、翻訳の必要がなかった発言も一覧に出します。"
+                           "視聴目的で使う場合にチェックしてください")
             cb = ft.Checkbox(
                 label=label,
                 value=bool(self.config.get(key, DEFAULT_VIEW_OPTIONS[key])),
                 on_change=refresh_preview,
+                tooltip=tooltip,
             )
             self.view_checkboxes[key] = cb
             checkbox_controls.append(cb)

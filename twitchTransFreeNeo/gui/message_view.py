@@ -19,6 +19,7 @@ DEFAULT_VIEW_OPTIONS: Dict[str, bool] = {
     "view_show_lang": True,        # 言語コード [en] など
     "view_show_original": True,    # 原文
     "view_show_translation": True, # 翻訳文
+    "view_show_untranslated": False,  # 翻訳されなかった発言そのもの
 }
 
 

@@ -287,6 +287,8 @@ class YouTubeChatMonitor:
 
         # 無視言語チェック
         if self.language_detector.should_ignore_language(detected_lang):
+            self._emit_untranslated(username, original_content, cleaned_content,
+                                    detected_lang, timestamp)
             return
 
         # 翻訳先言語決定
@@ -299,6 +301,8 @@ class YouTubeChatMonitor:
 
         # 同じ言語なら翻訳不要（pt と pt-BR などの地域バリアントも同一扱い）
         if LanguageDetector.langs_match(detected_lang, target_lang):
+            self._emit_untranslated(username, original_content, cleaned_content,
+                                    detected_lang, timestamp)
             return
 
         # データベースから既訳語チェック
@@ -345,6 +349,22 @@ class YouTubeChatMonitor:
         # チャットに投稿（投稿可能な場合）
         if self.can_post and not self.view_only_mode:
             self._post_translation(chat_message)
+
+    def _emit_untranslated(self, username, original_content, cleaned_content,
+                           detected_lang, timestamp):
+        """翻訳しなかった発言も画面に出す（設定が有効なときだけ）"""
+        if not self.config.get("view_show_untranslated", False):
+            return
+
+        chat_message = ChatMessage(
+            user=username, text=original_content, timestamp=timestamp,
+            lang=detected_lang, translation=""
+        )
+        chat_message.cleaned_content = cleaned_content
+        chat_message.target_lang = ""
+
+        if self.message_callback:
+            self.message_callback(chat_message)
 
     def _post_translation(self, chat_message: ChatMessage):
         """翻訳結果をYouTubeチャットに投稿（レート制限付き）"""

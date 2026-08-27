@@ -149,6 +149,7 @@ class ConfigManager:
             "view_show_lang": True,
             "view_show_original": True,
             "view_show_translation": True,
+            "view_show_untranslated": False,  # 翻訳されなかった発言も表示する
 
             # GUI設定
             "window_width": 1200,

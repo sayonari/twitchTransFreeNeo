@@ -285,6 +285,8 @@ if TWITCHIO_AVAILABLE:
             
             # 無視言語チェック
             if self.language_detector.should_ignore_language(detected_lang):
+                self._emit_untranslated(username, original_content, cleaned_content,
+                                        detected_lang, timestamp)
                 return
             
             # 翻訳先言語決定
@@ -297,6 +299,8 @@ if TWITCHIO_AVAILABLE:
             
             # 同じ言語なら翻訳不要（pt と pt-BR などの地域バリアントも同一扱い）
             if LanguageDetector.langs_match(detected_lang, target_lang):
+                self._emit_untranslated(username, original_content, cleaned_content,
+                                        detected_lang, timestamp)
                 return
             
             # データベースから既訳語チェック
@@ -344,6 +348,26 @@ if TWITCHIO_AVAILABLE:
             if not self.config.get("view_only_mode", False):
                 await self._post_translation(msg.channel, chat_message)
     
+        def _emit_untranslated(self, username, original_content, cleaned_content,
+                               detected_lang, timestamp):
+            """翻訳しなかった発言も画面に出す（設定が有効なときだけ）
+
+            母語の発言や無視言語の発言は翻訳されないため、以前は画面にも
+            出ていなかった。視聴目的で使う場合はすべて見えたほうがよい
+            """
+            if not self.config.get("view_show_untranslated", False):
+                return
+
+            chat_message = ChatMessage(
+                user=username, text=original_content, timestamp=timestamp,
+                lang=detected_lang, translation=""
+            )
+            chat_message.cleaned_content = cleaned_content
+            chat_message.target_lang = ""
+
+            if self.message_callback:
+                self.message_callback(chat_message)
+
         async def _post_translation(self, channel, chat_message: ChatMessage):
             """翻訳結果をチャットに投稿"""
             if not chat_message.translation:
