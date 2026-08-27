@@ -108,6 +108,10 @@ class SettingsDialog:
         self.tts_omit_message_field: Optional[ft.TextField] = None
         self.read_only_lang_field: Optional[ft.TextField] = None
 
+        # 表示項目
+        self.view_checkboxes: Dict[str, ft.Checkbox] = {}
+        self.preview_area: Optional[ft.Column] = None
+
         # GUI設定
         self.font_size_slider: Optional[ft.Slider] = None
         self.window_width_field: Optional[ft.TextField] = None
@@ -190,6 +194,11 @@ class SettingsDialog:
                         text="TTS",
                         icon=ft.Icons.RECORD_VOICE_OVER,
                         content=self._create_tts_tab()
+                    ),
+                    ft.Tab(
+                        text="表示内容",
+                        icon=ft.Icons.VIEW_LIST,
+                        content=self._create_view_tab()
                     ),
                     ft.Tab(
                         text="表示",
@@ -1004,6 +1013,94 @@ class SettingsDialog:
             padding=10,
         )
 
+    def _create_view_tab(self) -> ft.Container:
+        """チャット一覧に何を表示するかを選ぶタブ（プレビュー付き）"""
+        from datetime import datetime
+        from .message_view import (
+            build_message_content, build_message_container, DEFAULT_VIEW_OPTIONS,
+        )
+
+        try:
+            from ..core.chat_monitor import ChatMessage
+        except ImportError:
+            from twitchTransFreeNeo.core.chat_monitor import ChatMessage
+
+        # プレビュー用のサンプル（外国語→日本語 と 日本語→外国語 の両方）
+        samples = []
+        m1 = ChatMessage("viewer_john", "Your stream is always fun!",
+                         datetime.now(), "en", "配信いつも楽しいです！")
+        m1.target_lang = "ja"
+        m2 = ChatMessage("さぁたん", "ありがとう！", datetime.now(), "ja", "Thank you!")
+        m2.target_lang = "en"
+        samples.extend([m1, m2])
+
+        self.preview_area = ft.Column([], spacing=0, tight=True)
+
+        labels = [
+            ("view_show_time", "時刻"),
+            ("view_show_username", "ユーザー名"),
+            ("view_show_lang", "言語コード（[en] など）"),
+            ("view_show_original", "原文"),
+            ("view_show_translation", "翻訳文"),
+        ]
+
+        def refresh_preview(e=None):
+            options = {k: bool(cb.value) for k, cb in self.view_checkboxes.items()}
+            self.preview_area.controls.clear()
+            for msg in samples:
+                content = build_message_content(msg, options, font_size=13)
+                self.preview_area.controls.append(build_message_container(content))
+            try:
+                self.preview_area.update()
+            except Exception:
+                pass
+
+        self.view_checkboxes = {}
+        checkbox_controls = []
+        for key, label in labels:
+            cb = ft.Checkbox(
+                label=label,
+                value=bool(self.config.get(key, DEFAULT_VIEW_OPTIONS[key])),
+                on_change=refresh_preview,
+            )
+            self.view_checkboxes[key] = cb
+            checkbox_controls.append(cb)
+
+        select_card = self._create_settings_card(
+            "表示する項目",
+            ft.Icons.CHECKLIST,
+            ft.Column(checkbox_controls, spacing=2),
+            helper_text="チェックを外した項目はチャット一覧に表示されません",
+        )
+
+        preview_card = self._create_settings_card(
+            "表示イメージ",
+            ft.Icons.PREVIEW,
+            ft.Container(
+                content=self.preview_area,
+                bgcolor=ft.Colors.with_opacity(0.03, ft.Colors.GREY),
+                border=ft.border.all(1, ft.Colors.GREY_300),
+                border_radius=6,
+                padding=6,
+            ),
+            helper_text="チェックを変えると、ここの見え方がすぐに変わります",
+        )
+
+        refresh_preview()
+
+        return ft.Container(
+            content=ft.Column([
+                select_card,
+                preview_card,
+                ft.Row([
+                    ft.Icon(ft.Icons.LIGHTBULB_OUTLINE, size=16, color=ft.Colors.AMBER),
+                    ft.Text("翻訳文だけを大きく見たい場合や、視聴専用で使う場合に調整してください",
+                            size=11, color=ft.Colors.GREY_700),
+                ], spacing=6),
+            ], scroll=ft.ScrollMode.AUTO, spacing=12),
+            padding=10,
+        )
+
     def _create_gui_tab(self) -> ft.Container:
         """GUI設定タブ"""
         # フォントサイズを有効範囲(10-24)に制限（旧バージョンとの互換性）
@@ -1225,6 +1322,10 @@ class SettingsDialog:
         updated["tts_text_max_length"] = int(self.tts_max_length_field.value) if self.tts_max_length_field.value.isdigit() else 50
         updated["tts_message_for_omitting"] = self.tts_omit_message_field.value
         updated["read_only_these_lang"] = [lang.strip() for lang in self.read_only_lang_field.value.split(',') if lang.strip()]
+
+        # 表示項目
+        for key, checkbox in getattr(self, "view_checkboxes", {}).items():
+            updated[key] = bool(checkbox.value)
 
         # GUI設定
         updated["font_size"] = int(self.font_size_slider.value)

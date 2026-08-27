@@ -13,12 +13,16 @@ try:
     from ..core.chat_monitor import ChatMonitor, ChatMessage
     from ..core.youtube_chat_monitor import YouTubeChatMonitor, PYTCHAT_AVAILABLE
     from .settings_dialog import SettingsDialog
+    from .message_view import build_message_content, build_message_container, get_view_options
 except ImportError:
     from twitchTransFreeNeo.utils.config_manager import ConfigManager
     from twitchTransFreeNeo.utils.sound_manager import get_sound_manager, SoundManager
     from twitchTransFreeNeo.core.chat_monitor import ChatMonitor, ChatMessage
     from twitchTransFreeNeo.core.youtube_chat_monitor import YouTubeChatMonitor, PYTCHAT_AVAILABLE
     from twitchTransFreeNeo.gui.settings_dialog import SettingsDialog
+    from twitchTransFreeNeo.gui.message_view import (
+        build_message_content, build_message_container, get_view_options
+    )
 
 class MainWindow:
     """Fletベースのメインウィンドウクラス"""
@@ -1365,57 +1369,26 @@ class MainWindow:
             animate_opacity=120,
         )
 
-        header_row = ft.Row([
-            ft.Text(
-                message.timestamp.strftime("%H:%M:%S"),
-                size=10,
-                color=ft.Colors.GREY,
-            ),
-        ], spacing=5, height=22)
+        # ヘッダー・原文・翻訳文の組み立ては共通部品に任せる
+        # （設定画面のプレビューと見た目を確実に一致させるため）
+        content = build_message_content(
+            message,
+            get_view_options(self.config_manager.get_all()),
+            font_size=self._font_size(),
+            actions=actions,
+        )
 
-        # お気に入りアイコン
-        if is_favorite:
-            header_row.controls.append(
-                ft.Icon(ft.Icons.STAR, size=14, color=ft.Colors.AMBER)
-            )
-
-        header_row.controls.extend([
-            ft.Text(
-                f"{message.user}:",
-                size=self._font_size(),
-                weight=ft.FontWeight.BOLD,
-                color=username_color,
-            ),
-            ft.Text(
-                f"[{message.lang}]" if message.lang else "",
-                size=10,
-                color=ft.Colors.GREY,
-            ),
-            ft.Container(expand=True),
-            actions,
-        ])
-
-        font_size = self._font_size()
-        content = ft.Column([
-            header_row,
-            ft.Text(message.text, size=font_size, selectable=True),
-        ], spacing=1, tight=True)
-
-        # 翻訳がある場合（毎行のアイコンはやめ，色と縦線で原文と区別する）
-        if message.translation:
-            content.controls.append(
-                ft.Row([
-                    ft.Container(width=3, height=16, bgcolor=ft.Colors.BLUE_200,
-                                 border_radius=2, margin=ft.margin.only(top=2)),
-                    ft.Text(
-                        message.translation,
-                        size=font_size,
-                        color=ft.Colors.BLUE_700,
-                        selectable=True,
-                        expand=True,
-                    ),
-                ], spacing=6, vertical_alignment=ft.CrossAxisAlignment.START)
-            )
+        # お気に入りは名前を金色にする
+        if is_favorite and content.controls:
+            first_row = content.controls[0]
+            if isinstance(first_row, ft.Row):
+                for c in first_row.controls:
+                    if isinstance(c, ft.Text) and c.value == f"{message.user}:":
+                        c.color = ft.Colors.AMBER_700
+                first_row.controls.insert(
+                    min(1, len(first_row.controls)),
+                    ft.Icon(ft.Icons.STAR, size=14, color=ft.Colors.AMBER),
+                )
 
         # 背景色（お気に入りはアンバー、ピン留めは黄色）
         if is_pinned:
@@ -1432,15 +1405,7 @@ class MainWindow:
             self._on_message_hover(e, is_favorite, is_pinned)
 
         # 枠で囲まず下線だけで区切り，視線が分断されないようにする
-        return ft.Container(
-            content=content,
-            padding=ft.padding.symmetric(vertical=5, horizontal=10),
-            bgcolor=bgcolor,
-            border=ft.border.only(
-                bottom=ft.BorderSide(1, ft.Colors.with_opacity(0.4, ft.Colors.GREY))
-            ),
-            on_hover=on_hover,
-        )
+        return build_message_container(content, bgcolor=bgcolor, on_hover=on_hover)
 
     def _on_message_hover(self, e, is_favorite: bool = False, is_pinned: bool = False):
         """メッセージホバー時のハイライト"""
@@ -1735,7 +1700,7 @@ class MainWindow:
         # アクセントカラー
         self._apply_accent_color(config.get("accent_color", "blue"))
 
-        # 文字サイズ（表示中のメッセージを作り直して反映）
+        # 文字サイズと表示項目（表示中のメッセージを作り直して反映）
         try:
             self._update_chat_display()
         except Exception as e:

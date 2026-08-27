@@ -143,6 +143,13 @@ class ConfigManager:
             "tts_message_for_omitting": "",
             "read_only_these_lang": [],
             
+            # 画面に何を表示するか（チャット一覧の項目）
+            "view_show_time": True,
+            "view_show_username": True,
+            "view_show_lang": True,
+            "view_show_original": True,
+            "view_show_translation": True,
+
             # GUI設定
             "window_width": 1200,
             "window_height": 800,
