@@ -1652,6 +1652,8 @@ class MainWindow:
             config = self.config_manager.get_all()
             settings_dialog = SettingsDialog(self.page, config, self._on_config_changed)
             settings_dialog.show()
+            # 設定画面を開いている間に起きたエラーを、その中へ表示するために覚えておく
+            self._settings_dialog = settings_dialog
         except Exception as ex:
             print(f"ERROR in _open_settings: {ex}")
             import traceback
@@ -1831,6 +1833,14 @@ class MainWindow:
 
     async def _show_error_dialog(self, title: str, message: str, hint: str = None):
         """エラーダイアログ表示（ヒント付き）"""
+        # 設定画面が開いているときは、その中に表示する。
+        # 上に別のダイアログを重ねると、閉じたときに設定画面まで閉じてしまう
+        # （「適用」で再接続 → 失敗、の流れで起きる）
+        settings_dialog = getattr(self, "_settings_dialog", None)
+        if settings_dialog is not None and settings_dialog.is_open:
+            settings_dialog.show_notice(title, f"{message}\n{hint}" if hint else message, kind="error")
+            return
+
         def close_dialog(e):
             self.page.close(dialog)
             self.page.update()

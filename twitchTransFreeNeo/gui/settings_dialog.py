@@ -54,6 +54,8 @@ class SettingsDialog:
         # UI要素の参照
         self.dialog: Optional[ft.AlertDialog] = None
         self.tabs: Optional[ft.Tabs] = None
+        self.tabs_holder: Optional[ft.Container] = None
+        self.notice_bar: Optional[ft.Container] = None  # 設定画面内に出す通知・確認
 
         # 基本設定
         self.channel_field: Optional[ft.TextField] = None
@@ -168,46 +170,57 @@ class SettingsDialog:
         page_h = getattr(self.page, "height", None) or 800
         return int(min(max(page_h - 230, 420), 900))
 
+    def _build_tabs(self, selected_index: int = 0) -> ft.Tabs:
+        """self.config の内容から全タブを組み立てる
+
+        設定のインポート時にも呼び直して、画面全体を読み込んだ設定で作り直す
+        （項目ごとに値を書き戻す方式は、項目を足すたびに反映漏れが出るため）
+        """
+        tabs = ft.Tabs(
+            selected_index=selected_index,
+            animation_duration=200,
+            tabs=[
+                ft.Tab(
+                    text="基本設定",
+                    icon=ft.Icons.SETTINGS,
+                    content=self._create_basic_tab()
+                ),
+                ft.Tab(
+                    text="翻訳",
+                    icon=ft.Icons.TRANSLATE,
+                    content=self._create_translation_tab()
+                ),
+                ft.Tab(
+                    text="フィルタ",
+                    icon=ft.Icons.FILTER_ALT,
+                    content=self._create_filter_tab()
+                ),
+                ft.Tab(
+                    text="TTS",
+                    icon=ft.Icons.RECORD_VOICE_OVER,
+                    content=self._create_tts_tab()
+                ),
+                ft.Tab(
+                    text="表示内容",
+                    icon=ft.Icons.VIEW_LIST,
+                    content=self._create_view_tab()
+                ),
+                ft.Tab(
+                    text="表示",
+                    icon=ft.Icons.DISPLAY_SETTINGS,
+                    content=self._create_gui_tab()
+                ),
+            ],
+            expand=1,
+        )
+        return tabs
+
     def show(self):
         """設定ダイアログを表示"""
         try:
-            self.tabs = ft.Tabs(
-                selected_index=0,
-                animation_duration=200,
-                tabs=[
-                    ft.Tab(
-                        text="基本設定",
-                        icon=ft.Icons.SETTINGS,
-                        content=self._create_basic_tab()
-                    ),
-                    ft.Tab(
-                        text="翻訳",
-                        icon=ft.Icons.TRANSLATE,
-                        content=self._create_translation_tab()
-                    ),
-                    ft.Tab(
-                        text="フィルタ",
-                        icon=ft.Icons.FILTER_ALT,
-                        content=self._create_filter_tab()
-                    ),
-                    ft.Tab(
-                        text="TTS",
-                        icon=ft.Icons.RECORD_VOICE_OVER,
-                        content=self._create_tts_tab()
-                    ),
-                    ft.Tab(
-                        text="表示内容",
-                        icon=ft.Icons.VIEW_LIST,
-                        content=self._create_view_tab()
-                    ),
-                    ft.Tab(
-                        text="表示",
-                        icon=ft.Icons.DISPLAY_SETTINGS,
-                        content=self._create_gui_tab()
-                    ),
-                ],
-                expand=1,
-            )
+            self.tabs = self._build_tabs()
+            self.tabs_holder = ft.Container(content=self.tabs, expand=True)
+            self.notice_bar = ft.Container(visible=False)
 
             self.dialog = ft.AlertDialog(
                 modal=True,
@@ -227,7 +240,7 @@ class SettingsDialog:
                     ),
                 ], spacing=8),
                 content=ft.Container(
-                    content=self.tabs,
+                    content=ft.Column([self.notice_bar, self.tabs_holder], spacing=8),
                     # ウィンドウの大きさに合わせて設定画面を広く使う
                     # （固定値だと大きな画面でも中身だけ狭いままになる）
                     width=self._dialog_width(),
@@ -1530,208 +1543,228 @@ class SettingsDialog:
         self.page.update()
 
     # === 設定インポート/エクスポート ===
+    #
+    # 設定画面（AlertDialog）の上に別の AlertDialog を重ねてはいけない。
+    # Flet 0.28 では、上のダイアログを閉じた瞬間に下の設定画面まで閉じてしまう
+    # （「インポート完了」の OK を押すと、適用を押す前に設定画面が消えていた）。
+    # 通知や確認は設定画面の中（notice_bar）に出す。
+
+    # 「機密情報を除外」でエクスポートすると空文字になる項目
+    SENSITIVE_KEYS = ("trans_oauth", "youtube_client_secret", "deepl_api_key")
+
+    # スライダーの範囲（範囲外の値を渡すと画面が組み立てられない）
+    _NUMERIC_RANGES = {
+        "tts_speed": (0.5, 2.5),
+        "font_size": (10, 24),
+        "sound_volume": (0.0, 1.0),
+    }
 
     def _export_settings(self, e):
         """設定をJSONファイルにエクスポート"""
         import json
         from datetime import datetime
 
-        try:
-            # 現在の設定を取得
-            current_config = self._get_updated_config()
-
-            # セキュリティ上、機密情報を除外するオプション
-            export_config = current_config.copy()
-
-            # エクスポートするかどうか確認ダイアログ
-            def do_export(include_secrets: bool):
+        def do_export(include_secrets: bool):
+            self._hide_notice()
+            try:
+                export_config = self._get_updated_config()
                 if not include_secrets:
-                    # 機密情報を除外
-                    sensitive_keys = ["trans_oauth", "youtube_client_secret", "deepl_api_key"]
-                    for key in sensitive_keys:
+                    for key in self.SENSITIVE_KEYS:
                         if key in export_config:
                             export_config[key] = ""
-
-                # ファイル名を生成
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"twitchTransFreeNeo_config_{timestamp}.json"
-
-                # JSONに変換
                 json_str = json.dumps(export_config, ensure_ascii=False, indent=2)
+            except Exception as ex:
+                self._show_message("エクスポートエラー", f"エクスポート中にエラーが発生しました:\n{ex}", kind="error")
+                return
 
-                # ファイルピッカーを使用
-                def save_result(e: ft.FilePickerResultEvent):
-                    if e.path:
-                        try:
-                            with open(e.path, 'w', encoding='utf-8') as f:
-                                f.write(json_str)
-                            self._show_message("エクスポート完了", f"設定を保存しました:\n{e.path}")
-                        except Exception as ex:
-                            self._show_message("エクスポートエラー", f"ファイルの保存に失敗しました:\n{ex}")
-                    self.page.close(confirm_dialog)
+            def save_result(e: ft.FilePickerResultEvent):
+                if not e.path:
+                    return
+                try:
+                    with open(e.path, 'w', encoding='utf-8') as f:
+                        f.write(json_str)
+                    self._show_message("エクスポート完了", f"設定を保存しました:\n{e.path}", kind="success")
+                except Exception as ex:
+                    self._show_message("エクスポートエラー", f"ファイルの保存に失敗しました:\n{ex}", kind="error")
 
-                file_picker = ft.FilePicker(on_result=save_result)
-                self.page.overlay.append(file_picker)
-                self.page.update()
-                file_picker.save_file(
-                    dialog_title="設定をエクスポート",
-                    file_name=filename,
-                    allowed_extensions=["json"],
-                )
-
-            def close_and_export_with_secrets(e):
-                self.page.close(confirm_dialog)
-                self.page.update()
-                do_export(True)
-
-            def close_and_export_without_secrets(e):
-                self.page.close(confirm_dialog)
-                self.page.update()
-                do_export(False)
-
-            def close_confirm(e):
-                self.page.close(confirm_dialog)
-                self.page.update()
-
-            confirm_dialog = ft.AlertDialog(
-                modal=True,
-                title=ft.Text("設定のエクスポート"),
-                content=ft.Column([
-                    ft.Text("設定ファイルをエクスポートします。"),
-                    ft.Container(
-                        content=ft.Row([
-                            ft.Icon(ft.Icons.WARNING, color=ft.Colors.AMBER),
-                            ft.Text(
-                                "OAuthトークンやAPIキーなどの機密情報を含めますか？\n"
-                                "含める場合、ファイルの取り扱いにご注意ください。",
-                                size=13,
-                            ),
-                        ], spacing=8),
-                        bgcolor=ft.Colors.with_opacity(0.1, ft.Colors.AMBER),
-                        padding=10,
-                        border_radius=5,
-                    ),
-                ], spacing=10, tight=True),
-                actions=[
-                    ft.TextButton("キャンセル", on_click=close_confirm),
-                    ft.OutlinedButton("機密情報を除外", on_click=close_and_export_without_secrets),
-                    ft.ElevatedButton("すべて含める", on_click=close_and_export_with_secrets),
-                ],
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self._get_file_picker(save_result).save_file(
+                dialog_title="設定をエクスポート",
+                file_name=f"twitchTransFreeNeo_config_{timestamp}.json",
+                allowed_extensions=["json"],
             )
-            self.page.open(confirm_dialog)
-            self.page.update()
 
-        except Exception as ex:
-            self._show_message("エクスポートエラー", f"エクスポート中にエラーが発生しました:\n{ex}")
+        self._show_message(
+            "設定のエクスポート",
+            "OAuthトークンやAPIキーなどの機密情報を含めますか？\n"
+            "含める場合、ファイルの取り扱いにご注意ください。",
+            kind="warning",
+            actions=[
+                ft.TextButton("キャンセル", on_click=lambda e: self._hide_notice()),
+                ft.OutlinedButton("機密情報を除外", on_click=lambda e: do_export(False)),
+                ft.ElevatedButton("すべて含める", on_click=lambda e: do_export(True)),
+            ],
+        )
 
     def _import_settings(self, e):
         """JSONファイルから設定をインポート"""
         import json
 
         def on_file_picked(e: ft.FilePickerResultEvent):
-            if not e.files or len(e.files) == 0:
+            if not e.files:
                 return
 
             try:
-                file_path = e.files[0].path
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(e.files[0].path, 'r', encoding='utf-8') as f:
                     imported_config = json.load(f)
-
-                # 設定を適用
-                self._apply_imported_config(imported_config)
-                self._show_message("インポート完了", "設定をインポートしました。\n「適用」または「OK」で保存してください。")
-
-            except json.JSONDecodeError:
-                self._show_message("インポートエラー", "無効なJSONファイルです。")
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                self._show_message("インポートエラー", "無効なJSONファイルです。", kind="error")
+                return
             except Exception as ex:
-                self._show_message("インポートエラー", f"インポート中にエラーが発生しました:\n{ex}")
+                self._show_message("インポートエラー", f"ファイルを読み込めませんでした:\n{ex}", kind="error")
+                return
 
-        file_picker = ft.FilePicker(on_result=on_file_picked)
-        self.page.overlay.append(file_picker)
-        self.page.update()
-        file_picker.pick_files(
+            try:
+                merged, accepted, kept_secrets = self._merge_imported_config(imported_config)
+                if not accepted:
+                    self._show_message(
+                        "インポートエラー",
+                        "読み込める設定項目がありませんでした。\n"
+                        "このアプリでエクスポートした設定ファイルか確認してください。",
+                        kind="error",
+                    )
+                    return
+
+                self._rebuild_tabs(merged)
+
+                message = (
+                    f"{len(accepted)}件の設定を読み込みました。まだ保存されていません。\n"
+                    "内容を確認して「適用」または「OK」を押してください。"
+                )
+                if kept_secrets:
+                    message += "\n（ファイルに含まれていない OAuthトークン・APIキーは、今の値をそのまま残しています）"
+                self._show_message("インポート完了", message, kind="success")
+            except Exception as ex:
+                self._show_message("インポートエラー", f"インポート中にエラーが発生しました:\n{ex}", kind="error")
+
+        self._get_file_picker(on_file_picked).pick_files(
             dialog_title="設定をインポート",
             allowed_extensions=["json"],
             allow_multiple=False,
         )
 
-    def _apply_imported_config(self, imported_config: Dict[str, Any]):
-        """インポートした設定をUIに反映"""
-        # 基本設定
-        if "platform" in imported_config and self.platform_dropdown:
-            self.platform_dropdown.value = imported_config.get("platform", "twitch")
-        if "twitch_channel" in imported_config and self.channel_field:
-            self.channel_field.value = imported_config.get("twitch_channel", "")
-        if "trans_username" in imported_config and self.username_field:
-            self.username_field.value = imported_config.get("trans_username", "")
-        if "trans_oauth" in imported_config and self.oauth_field:
-            self.oauth_field.value = imported_config.get("trans_oauth", "")
+    def _merge_imported_config(self, imported_config: Any):
+        """インポートした設定を今の設定に重ねる
 
-        # YouTube設定
-        if "youtube_video_id" in imported_config and self.youtube_video_id_field:
-            self.youtube_video_id_field.value = imported_config.get("youtube_video_id", "")
-        if "youtube_client_id" in imported_config and self.youtube_client_id_field:
-            self.youtube_client_id_field.value = imported_config.get("youtube_client_id", "")
-        if "youtube_client_secret" in imported_config and self.youtube_client_secret_field:
-            self.youtube_client_secret_field.value = imported_config.get("youtube_client_secret", "")
+        Returns:
+            (重ねた結果の設定, 採用したキー, 空だったので今の値を残した機密キー)
+        """
+        if not isinstance(imported_config, dict):
+            return self.config.copy(), [], []
 
-        # 翻訳設定
-        if "lang_trans_to_home" in imported_config and self.home_lang_dropdown:
-            lang = imported_config.get("lang_trans_to_home", "ja")
-            lang_codes = [code for code, _ in self.SUPPORTED_LANGUAGES]
-            if lang in lang_codes:
-                self.home_lang_dropdown.value = lang
-                self.home_lang_custom_container.visible = False
-            else:
-                self.home_lang_dropdown.value = "custom"
-                self.home_lang_custom_field.value = lang
-                self.home_lang_custom_container.visible = True
+        # 画面で編集中の値を土台にする（インポート対象外の項目の編集を捨てない）
+        merged = self._get_updated_config()
+        accepted = []
+        kept_secrets = []
 
-        if "lang_home_to_other" in imported_config and self.other_lang_dropdown:
-            lang = imported_config.get("lang_home_to_other", "en")
-            lang_codes = [code for code, _ in self.SUPPORTED_LANGUAGES]
-            if lang in lang_codes:
-                self.other_lang_dropdown.value = lang
-                self.other_lang_custom_container.visible = False
-            else:
-                self.other_lang_dropdown.value = "custom"
-                self.other_lang_custom_field.value = lang
-                self.other_lang_custom_container.visible = True
+        for key, value in imported_config.items():
+            if key not in merged:
+                continue  # このバージョンに無い項目
+            if not self._is_same_kind(merged[key], value):
+                continue  # 手で書き換えて型が壊れた値は採用しない
+            if key in self.SENSITIVE_KEYS and value == "":
+                # 「機密情報を除外」したファイル。今のトークンを消さない
+                if merged[key]:
+                    kept_secrets.append(key)
+                continue
+            if key in self._NUMERIC_RANGES:
+                low, high = self._NUMERIC_RANGES[key]
+                value = min(max(value, low), high)
+            merged[key] = value
+            accepted.append(key)
 
-        if "trans_to_home_only" in imported_config and hasattr(self, "trans_to_home_only_checkbox"):
-            self.trans_to_home_only_checkbox.value = bool(imported_config.get("trans_to_home_only", False))
+        return merged, accepted, kept_secrets
 
-        # 表示設定
-        if "trans_text_color" in imported_config and self.color_dropdown:
-            self.color_dropdown.value = imported_config.get("trans_text_color", "GoldenRod")
-        if "show_by_name" in imported_config and self.show_name_checkbox:
-            self.show_name_checkbox.value = imported_config.get("show_by_name", True)
-        if "show_by_lang" in imported_config and self.show_lang_checkbox:
-            self.show_lang_checkbox.value = imported_config.get("show_by_lang", True)
+    @staticmethod
+    def _is_same_kind(current: Any, value: Any) -> bool:
+        """インポートした値が、今の設定値と同じ種類か"""
+        if current is None:
+            return True
+        if isinstance(current, bool):
+            return isinstance(value, bool)
+        if isinstance(current, (int, float)):
+            return isinstance(value, (int, float)) and not isinstance(value, bool)
+        if isinstance(current, list):
+            return isinstance(value, list) and all(isinstance(v, str) for v in value)
+        return isinstance(value, type(current))
 
-        # その他
-        if "debug" in imported_config and self.debug_checkbox:
-            self.debug_checkbox.value = imported_config.get("debug", False)
-        if "auto_start" in imported_config and self.auto_start_checkbox:
-            self.auto_start_checkbox.value = imported_config.get("auto_start", False)
-        if "view_only_mode" in imported_config and self.view_only_checkbox:
-            self.view_only_checkbox.value = imported_config.get("view_only_mode", False)
-
-        # プラットフォーム表示を更新
-        self._on_platform_change()
+    def _rebuild_tabs(self, config: Dict[str, Any]):
+        """設定内容を差し替えて、全タブを作り直す"""
+        selected_index = self.tabs.selected_index if self.tabs else 0
+        self.config = config
+        self.tabs = self._build_tabs(selected_index or 0)
+        self.tabs_holder.content = self.tabs
         self.page.update()
 
-    def _show_message(self, title: str, message: str):
-        """メッセージダイアログを表示"""
-        def close_dialog(e):
-            self.page.close(msg_dialog)
+    def _get_file_picker(self, on_result) -> ft.FilePicker:
+        """ファイル選択は1つを使い回す（押すたびに overlay へ増やさない）"""
+        if getattr(self, "_file_picker", None) is None:
+            self._file_picker = ft.FilePicker()
+            self.page.overlay.append(self._file_picker)
+            self.page.update()
+        self._file_picker.on_result = on_result
+        return self._file_picker
+
+    @property
+    def is_open(self) -> bool:
+        """設定画面が表示中か"""
+        return bool(self.dialog and self.dialog.open)
+
+    def show_notice(self, title: str, message: str, kind: str = "info"):
+        """設定画面の外（メイン画面）から、設定画面の中に知らせを出す"""
+        self._show_message(title, message, kind=kind)
+
+    def _hide_notice(self):
+        if self.notice_bar is not None and self.notice_bar.visible:
+            self.notice_bar.visible = False
             self.page.update()
 
-        msg_dialog = ft.AlertDialog(
-            modal=True,
-            title=ft.Text(title),
-            content=ft.Text(message),
-            actions=[ft.ElevatedButton("OK", on_click=close_dialog)],
-        )
-        self.page.open(msg_dialog)
+    def _show_message(self, title: str, message: str, kind: str = "info", actions=None):
+        """通知・確認を設定画面の中に表示する
+
+        actions を渡すと確認用のボタンを並べる。渡さなければ閉じるボタンだけ。
+        """
+        if self.notice_bar is None or not self.is_open:
+            # 設定画面が出ていないときだけ、単独のダイアログで知らせる
+            msg_dialog = ft.AlertDialog(
+                modal=True,
+                title=ft.Text(title),
+                content=ft.Text(message),
+            )
+            msg_dialog.actions = [ft.ElevatedButton("OK", on_click=lambda e: self.page.close(msg_dialog))]
+            self.page.open(msg_dialog)
+            return
+
+        icon, color = {
+            "success": (ft.Icons.CHECK_CIRCLE, ft.Colors.GREEN),
+            "warning": (ft.Icons.WARNING, ft.Colors.AMBER),
+            "error": (ft.Icons.ERROR, ft.Colors.RED),
+        }.get(kind, (ft.Icons.INFO, ft.Colors.PRIMARY))
+
+        if actions is None:
+            actions = [ft.IconButton(icon=ft.Icons.CLOSE, tooltip="閉じる", on_click=lambda e: self._hide_notice())]
+
+        self.notice_bar.content = ft.Row([
+            ft.Icon(icon, color=color),
+            ft.Column([
+                ft.Text(title, weight=ft.FontWeight.BOLD, size=13),
+                ft.Text(message, size=13, selectable=True),
+            ], spacing=2, tight=True, expand=True),
+            ft.Row(actions, spacing=4, tight=True),
+        ], spacing=10, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+        self.notice_bar.bgcolor = ft.Colors.with_opacity(0.12, color)
+        self.notice_bar.border = ft.border.all(1, ft.Colors.with_opacity(0.5, color))
+        self.notice_bar.border_radius = 6
+        self.notice_bar.padding = ft.padding.symmetric(horizontal=12, vertical=8)
+        self.notice_bar.visible = True
         self.page.update()
